@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         colors="true"
+>
+    <testsuites>
+        <testsuite name="Unit">
+            <directory>tests/Unit</directory>
+        </testsuite>
+        <testsuite name="Feature">
+            <directory>tests/Feature</directory>
+        </testsuite>
+    </testsuites>
+    <source>
+        <include>
+            <directory>app</directory>
+        </include>
+    </source>
+    <php>
+        <env name="APP_ENV" value="testing"/>
+        <!-- Must not inherit a production APP_URL with a path prefix, or every
+             test request is routed under that prefix and 404s. -->
+        <env name="APP_URL" value="http://localhost"/>
+        <env name="APP_MAINTENANCE_DRIVER" value="file"/>
+        <env name="BCRYPT_ROUNDS" value="4"/>
+        <env name="CACHE_STORE" value="array"/>
+        <env name="DB_CONNECTION" value="sqlite"/>
+        <env name="DB_DATABASE" value=":memory:"/>
+        <env name="MAIL_MAILER" value="array"/>
+        <env name="QUEUE_CONNECTION" value="sync"/>
+        <env name="SESSION_DRIVER" value="array"/>
+        <env name="PULSE_ENABLED" value="false"/>
+        <env name="TELESCOPE_ENABLED" value="false"/>
+        <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <env name="APP_TIMEZONE" value="Asia/Kolkata"/>
+        <!-- Hermetic voice-service config: tests must never reach a real API. -->
+        <env name="SARVAM_API_KEY" value="test-key-not-real"/>
+        <env name="SARVAM_BASE_URL" value="https://voice.test"/>
+        <env name="SARVAM_ORG_ID" value="org-test"/>
+        <env name="SARVAM_WORKSPACE_ID" value="ws-test"/>
+        <env name="SARVAM_APP_ID" value="app-test"/>
+        <env name="SARVAM_APP_VERSION" value="1"/>
+        <env name="SARVAM_CONNECTION_ID" value="conn-test"/>
+        <env name="SARVAM_AGENT_PHONE_NUMBER" value="+918000000000"/>
+        <env name="SARVAM_WEBHOOK_TOKEN" value="test-webhook-token-0123456789"/>
+        <env name="SARVAM_WEBHOOK_URL" value="https://app.test"/>
+        <env name="SARVAM_RETRY_TIMES" value="1"/>
+        <env name="SARVAM_RETRY_SLEEP_MS" value="0"/>
+    </php>
+</phpunit>

@@ -1,0 +1,31 @@
+# Laravel public/.htaccess
+<IfModule mod_rewrite.c>
+    <IfModule mod_negotiation.c>
+        Options -MultiViews -Indexes
+    </IfModule>
+
+    # Allow reading through the storage symlink on shared hosting
+    Options +SymLinksIfOwnerMatch
+
+    RewriteEngine On
+
+    # Preserve Authorization header (for APIs, Sanctum, etc.)
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+    # Remove trailing slashes
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_URI} (.+)/$
+    RewriteRule ^ %1 [L,R=301]
+
+    # Send all non-file/non-dir requests to index.php
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteRule ^ index.php [L]
+</IfModule>
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteCond %{HTTP_HOST} ^www\.heyyu\.in [NC]
+  RewriteRule ^ https://heyyu.in%{REQUEST_URI} [R=301,L]
+</IfModule>

@@ -1,0 +1,192 @@
+/* ============================================================
+   Simplified client interface
+   Loaded after zentic.css. Adds only what the reduced MVP needs and
+   tones down the busier parts of the template. One brand colour;
+   supporting colours stay subtle.
+   ============================================================ */
+
+/* ---------------------------------------------------------------- topbar */
+.topbar-page-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--zc-text-primary);
+  margin: 0 0 0 4px;
+  letter-spacing: -0.01em;
+}
+
+/* Single, plain-language status. Replaces the old Service Status cards. */
+.agent-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--zc-border-color);
+  background: #fff;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--zc-text-muted);
+  white-space: nowrap;
+}
+.agent-chip-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--zc-text-secondary);
+  flex: 0 0 auto;
+}
+.agent-chip.is-active { color: #047857; border-color: rgba(16, 185, 129, .35); background: rgba(16, 185, 129, .07); }
+.agent-chip.is-active .agent-chip-dot { background: #10B981; box-shadow: 0 0 0 3px rgba(16, 185, 129, .18); }
+.agent-chip.is-off { color: #B45309; border-color: rgba(245, 158, 11, .35); background: rgba(245, 158, 11, .08); }
+.agent-chip.is-off .agent-chip-dot { background: #F59E0B; }
+
+/* --------------------------------------------------------------- sidebar */
+/* The nav dropped its section wrapper (three items need no grouping), so the
+   list takes over the gutter that wrapper used to provide. */
+.sidebar-nav > .nav-list { padding: 0 10px; }
+
+/* ---------------------------------------------------------------- KPI row */
+.kpi-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; }
+
+.kpi-card {
+  background: var(--zc-card-bg);
+  border: 1px solid var(--zc-border-color);
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: var(--zc-shadow-card);
+  transition: box-shadow .18s ease, border-color .18s ease;
+}
+.kpi-card:hover { box-shadow: var(--zc-shadow-md); border-color: rgba(80, 70, 229, .25); }
+.kpi-card-top { display: flex; align-items: center; gap: 9px; margin-bottom: 14px; }
+.kpi-card-icon {
+  width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center;
+  background: rgba(80, 70, 229, .09); color: var(--zc-primary); font-size: .9rem; flex: 0 0 auto;
+}
+.kpi-card-label {
+  font-size: .76rem; font-weight: 700; color: var(--zc-text-secondary);
+  text-transform: uppercase; letter-spacing: .04em; line-height: 1.2;
+}
+.kpi-card-value { font-size: 1.85rem; font-weight: 800; color: var(--zc-text-primary); letter-spacing: -.03em; line-height: 1; }
+.kpi-card-hint { font-size: .76rem; color: var(--zc-text-secondary); margin-top: 8px; }
+
+/* ------------------------------------------------------------- hot leads */
+.hot-lead-list { display: flex; flex-direction: column; gap: 12px; }
+
+.hot-lead {
+  display: flex; align-items: center; gap: 16px;
+  padding: 16px 18px;
+  border: 1px solid var(--zc-border-color);
+  border-left: 3px solid var(--zc-primary);
+  border-radius: 14px;
+  background: var(--zc-card-bg);
+  transition: box-shadow .18s ease, transform .18s ease;
+}
+.hot-lead:hover { box-shadow: var(--zc-shadow-md); transform: translateY(-1px); }
+.hot-lead-avatar {
+  width: 42px; height: 42px; border-radius: 12px; flex: 0 0 auto;
+  display: grid; place-items: center;
+  background: rgba(80, 70, 229, .1); color: var(--zc-primary);
+  font-weight: 800; font-size: .95rem; text-transform: uppercase;
+}
+.hot-lead-main { min-width: 0; flex: 1; }
+.hot-lead-name { font-size: .95rem; font-weight: 700; color: var(--zc-text-primary); display: block; }
+.hot-lead-outcome { font-size: .82rem; font-weight: 600; color: var(--zc-primary); }
+.hot-lead-meta { font-size: .78rem; color: var(--zc-text-secondary); margin-top: 3px; }
+.hot-lead-actions { display: flex; gap: 8px; flex: 0 0 auto; }
+
+/* --------------------------------------------------------- calls overview */
+.overview-row { display: flex; flex-direction: column; gap: 18px; }
+.overview-item-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; gap: 12px; }
+.overview-item-label { font-size: .86rem; font-weight: 600; color: var(--zc-text-primary); }
+.overview-item-count { font-size: .86rem; font-weight: 800; color: var(--zc-text-primary); }
+.overview-item-count span { font-weight: 600; color: var(--zc-text-secondary); font-size: .78rem; margin-left: 6px; }
+.overview-track { height: 8px; border-radius: 999px; background: var(--zc-border-light); overflow: hidden; }
+.overview-fill { height: 100%; border-radius: 999px; transition: width .4s ease; }
+.overview-fill.green  { background: #10B981; }
+.overview-fill.purple { background: var(--zc-primary); }
+.overview-fill.cyan   { background: #06B6D4; }
+.overview-fill.orange { background: #F59E0B; }
+
+/* --------------------------------------------------------------- calling */
+.calling-tabs { display: flex; gap: 10px; margin-bottom: 22px; flex-wrap: wrap; }
+.calling-tab {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 18px; border-radius: 14px; cursor: pointer;
+  border: 1px solid var(--zc-border-color); background: var(--zc-card-bg);
+  font-family: inherit; font-size: .9rem; font-weight: 700; color: var(--zc-text-muted);
+  transition: border-color .15s ease, color .15s ease, background .15s ease;
+}
+.calling-tab i { font-size: 1rem; }
+.calling-tab:hover { border-color: rgba(80, 70, 229, .4); color: var(--zc-primary); }
+.calling-tab.active { border-color: var(--zc-primary); background: rgba(80, 70, 229, .06); color: var(--zc-primary); }
+.calling-tab-soon {
+  font-size: .64rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase;
+  padding: 3px 8px; border-radius: 999px; background: var(--zc-border-light); color: var(--zc-text-secondary);
+}
+
+.coming-soon {
+  text-align: center; padding: 56px 24px;
+  border: 1px dashed var(--zc-border-color); border-radius: 16px; background: var(--zc-card-bg);
+}
+.coming-soon-icon {
+  width: 54px; height: 54px; border-radius: 16px; margin: 0 auto 18px;
+  display: grid; place-items: center; font-size: 1.4rem;
+  background: rgba(80, 70, 229, .08); color: var(--zc-primary);
+}
+.coming-soon h3 { font-size: 1.05rem; font-weight: 700; color: var(--zc-text-primary); margin-bottom: 8px; }
+.coming-soon p { font-size: .9rem; color: var(--zc-text-secondary); max-width: 440px; margin: 0 auto; }
+
+/* ------------------------------------------------------------ transcript */
+.transcript-turn { display: flex; margin-bottom: 16px; }
+.transcript-turn.customer { justify-content: flex-end; }
+.transcript-bubble { max-width: 78%; }
+.transcript-who { font-size: .74rem; font-weight: 700; color: var(--zc-text-secondary); margin-bottom: 6px; }
+.transcript-turn.customer .transcript-who { text-align: right; }
+.transcript-text {
+  padding: 13px 16px; border-radius: 14px; font-size: .9rem; line-height: 1.6;
+  color: var(--zc-text-primary); border: 1px solid var(--zc-border-color); background: #F7F8FC;
+}
+.transcript-turn.customer .transcript-text { background: rgba(80, 70, 229, .07); border-color: rgba(80, 70, 229, .2); }
+
+/* --------------------------------------------------------------- general */
+.section-title { font-size: 1.02rem; font-weight: 700; color: var(--zc-text-primary); margin: 0; }
+.section-sub { font-size: .82rem; color: var(--zc-text-secondary); margin: 2px 0 0; }
+
+.zentic-footer { justify-content: center; }
+
+/* ------------------------------------------------------------ responsive */
+@media (max-width: 1199px) {
+  .kpi-row { grid-template-columns: repeat(3, 1fr); }
+}
+
+@media (max-width: 767px) {
+  .kpi-row { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  .kpi-card { padding: 16px; }
+  .kpi-card-value { font-size: 1.5rem; }
+
+  .hot-lead { flex-wrap: wrap; gap: 12px; }
+  .hot-lead-actions { width: 100%; }
+  .hot-lead-actions .btn-zentic { flex: 1; justify-content: center; }
+
+  .calling-tabs { flex-direction: column; }
+  .calling-tab { width: 100%; }
+
+  .transcript-bubble { max-width: 90%; }
+}
+
+@media (max-width: 575px) {
+  .kpi-row { grid-template-columns: 1fr; }
+}
+
+/* Tables stay usable on a phone by scrolling horizontally rather than
+   squashing columns into unreadable stacks. */
+.zentic-table-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.zentic-table-wrapper .zentic-table { min-width: 640px; }
+
+/* ------------------------------------------------------------- dark mode */
+[data-theme="dark"] .agent-chip { background: rgba(255,255,255,.03); }
+[data-theme="dark"] .kpi-card,
+[data-theme="dark"] .hot-lead,
+[data-theme="dark"] .calling-tab,
+[data-theme="dark"] .coming-soon { background: var(--zc-card-bg); }
+[data-theme="dark"] .transcript-text { background: rgba(255,255,255,.04); }
