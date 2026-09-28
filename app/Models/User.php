@@ -12,6 +12,9 @@ class User extends Authenticatable
     /** @use HasFactory<\Database\Factories\UserFactory> */
     use HasFactory, Notifiable;
 
+    /** The account behind the "Start Free" demo session. */
+    public const DEMO_EMAIL = 'demo@voiceagent.local';
+
     /**
      * The attributes that are mass assignable.
      *
@@ -44,5 +47,10 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
         ];
+    }
+
+    public function isDemo(): bool
+    {
+        return $this->email === self::DEMO_EMAIL;
     }
 }

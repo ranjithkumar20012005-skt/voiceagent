@@ -14,6 +14,7 @@ use App\Http\Controllers\InsightsController;
 use App\Http\Controllers\LeadController;
 use App\Http\Controllers\PageController;
 use App\Http\Controllers\SettingsController;
+use App\Http\Middleware\DemoReadOnly;
 use Illuminate\Support\Facades\Route;
 
 // ---------------------------------------------------------------
@@ -25,7 +26,8 @@ Route::get('/', [PageController::class, 'home'])->name('home');
 // Authentication
 // ---------------------------------------------------------------
 Route::get('/login', [AuthController::class, 'showLoginForm'])->name('login');
-// "Start Free": straight to the dashboard (development demo session only).
+// "Start Free": straight to the dashboard with a read-only demo session
+// when DEMO_START_FREE_ENABLED is on; otherwise the sign-in page.
 Route::get('/start', [AuthController::class, 'startFree'])
     ->middleware('throttle:30,1')
     ->name('start');
@@ -37,7 +39,7 @@ Route::post('/login', [AuthController::class, 'login'])
 // ---------------------------------------------------------------
 // Authenticated application
 // ---------------------------------------------------------------
-Route::middleware('auth')->group(function () {
+Route::middleware(['auth', DemoReadOnly::class])->group(function () {
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
     // Overview

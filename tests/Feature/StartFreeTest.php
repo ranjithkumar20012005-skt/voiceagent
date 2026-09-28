@@ -7,8 +7,8 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * "Start Free" goes straight to the dashboard (development only); "Sign In"
- * stays the normal credential form.
+ * "Start Free" goes straight to a read-only demo dashboard when enabled;
+ * "Sign In" stays the normal credential form.
  */
 class StartFreeTest extends TestCase
 {
@@ -35,19 +35,51 @@ class StartFreeTest extends TestCase
         $this->get('/start')->assertRedirect('/dashboard');
 
         $this->assertAuthenticated();
-        $this->assertSame('demo@voiceagent.local', auth()->user()->email);
+        $this->assertSame(User::DEMO_EMAIL, auth()->user()->email);
         $this->get('/dashboard')->assertOk()->assertDontSee('Create Account')->assertDontSee('Workspace name');
     }
 
-    public function test_start_free_never_opens_a_session_in_production(): void
+    public function test_start_free_is_off_in_production_unless_explicitly_enabled(): void
     {
-        config(['app.start_free_demo' => true]);
         $this->app['env'] = 'production';
+        config(['app.start_free_demo' => false]);
 
         $this->get('/start')->assertRedirect('/login');
 
         $this->assertGuest();
-        $this->assertDatabaseMissing('users', ['email' => 'demo@voiceagent.local']);
+        $this->assertDatabaseMissing('users', ['email' => User::DEMO_EMAIL]);
+
+        config(['app.start_free_demo' => true]);
+
+        $this->get('/start')->assertRedirect('/dashboard');
+        $this->assertSame(User::DEMO_EMAIL, auth()->user()->email);
+    }
+
+    public function test_the_demo_session_is_read_only(): void
+    {
+        config(['app.start_free_demo' => true]);
+        $this->get('/start');
+
+        $this->from('/settings')->put('/settings', [])
+            ->assertRedirect('/settings')
+            ->assertSessionHas('status');
+
+        $this->postJson('/calls', ['phone_number' => '+919876543210'])->assertForbidden();
+        $this->assertDatabaseCount('call_attempts', 0);
+
+        $this->get('/dashboard')->assertOk();
+
+        $this->post('/logout')->assertRedirect('/login');
+        $this->assertGuest();
+    }
+
+    public function test_a_real_user_is_not_read_only(): void
+    {
+        $user = User::create(['name' => 'Admin', 'email' => 'admin@example.test', 'password' => bcrypt('secret')]);
+
+        $this->actingAs($user)->from('/settings')->put('/settings', []);
+
+        $this->assertStringNotContainsString('read-only', (string) session('status'));
     }
 
     public function test_start_free_falls_back_to_sign_in_when_disabled(): void
@@ -66,6 +98,9 @@ class StartFreeTest extends TestCase
             ->assertDontSee('Create Account');
 
         $user = User::create(['name' => 'Admin', 'email' => 'admin@example.test', 'password' => bcrypt('secret')]);
+
+        $this->post('/login', ['email' => 'admin@example.test', 'password' => 'wrong'])->assertSessionHasErrors('email');
+        $this->assertGuest();
 
         $this->post('/login', ['email' => 'admin@example.test', 'password' => 'secret'])->assertRedirect('/dashboard');
         $this->assertAuthenticatedAs($user);

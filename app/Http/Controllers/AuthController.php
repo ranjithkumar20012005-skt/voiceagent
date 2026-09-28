@@ -36,10 +36,11 @@ class AuthController extends Controller
     /**
      * "Start Free": straight to the dashboard, no signup step.
      *
-     * Development only. Signs in a dedicated demo account (never the admin),
-     * whose password is random and never shown. In production -- or when the
-     * flag is off -- it falls back to the normal sign-in page, so no data is
-     * ever reachable without credentials there.
+     * Only when DEMO_START_FREE_ENABLED is on (default: on for APP_ENV=local,
+     * off everywhere else). Signs in a dedicated demo account (never the
+     * admin) whose password is random and never shown; that session is
+     * read-only (see DemoReadOnly). With the flag off it falls back to the
+     * normal sign-in page, so no data is reachable without credentials.
      */
     public function startFree(Request $request)
     {
@@ -47,12 +48,12 @@ class AuthController extends Controller
             return redirect()->route('dashboard');
         }
 
-        if (app()->environment('production') || ! config('app.start_free_demo')) {
+        if (! config('app.start_free_demo')) {
             return redirect()->route('login');
         }
 
         $demo = User::firstOrCreate(
-            ['email' => 'demo@voiceagent.local'],
+            ['email' => User::DEMO_EMAIL],
             ['name' => 'Demo User', 'password' => Str::random(40)],
         );
 

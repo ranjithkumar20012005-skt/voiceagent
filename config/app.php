@@ -42,11 +42,13 @@ return [
     'debug' => (bool) env('APP_DEBUG', false),
 
     /*
-    | "Start Free" goes straight into the dashboard with a demo session. For
-    | development/testing only: on by default when APP_ENV=local, and never
-    | honoured in production (see AuthController::startFree).
+    | "Start Free" goes straight into the dashboard with a read-only demo
+    | session. On by default only when APP_ENV=local; any other environment
+    | must opt in with DEMO_START_FREE_ENABLED=true. The demo account sees the
+    | same data as every other user, so only enable it on demo databases.
+    | START_FREE_DEMO is the older name for the same flag.
     */
-    'start_free_demo' => (bool) env('START_FREE_DEMO', env('APP_ENV') === 'local'),
+    'start_free_demo' => (bool) env('DEMO_START_FREE_ENABLED', env('START_FREE_DEMO', env('APP_ENV') === 'local')),
 
     /*
     |--------------------------------------------------------------------------
