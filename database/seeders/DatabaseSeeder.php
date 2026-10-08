@@ -18,5 +18,9 @@ class DatabaseSeeder extends Seeder
 
         // The renewal automation (created disabled).
         $this->call(AutomationSeeder::class);
+
+        // The master agent catalogue. Provider ids are bound separately by an
+        // administrator -- see AgentTemplateSeeder and `voice:template-bind`.
+        $this->call(AgentTemplateSeeder::class);
     }
 }

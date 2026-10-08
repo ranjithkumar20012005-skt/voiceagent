@@ -137,9 +137,11 @@ class ClientInterfaceTest extends TestCase
         $this->signIn();
         $call = $this->hotLead();
 
+        // The panel is headed "Conversation" since the result page was rebuilt;
+        // what matters is that the turns render in business wording.
         $this->get('/calls/' . $call->id)
             ->assertOk()
-            ->assertSee('Conversation Transcript')
+            ->assertSee('Conversation')
             ->assertSee('Hello, am I speaking with Ramesh?')
             ->assertSee('Yes, speaking.')
             ->assertSee('Answered')

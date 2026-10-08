@@ -2,19 +2,21 @@
 
 @php
   $copy = [
+      // Copy de-branded: these pages named the voice platform and told the
+      // client to go and configure it. Both are our team's work, not theirs.
       'knowledge' => [
           'title' => 'Knowledge Base',
           'sub'   => 'Documents your agent can answer questions from.',
           'icon'  => 'icon-book-open',
-          'what'  => 'Documents uploaded here are not connected to the voice agent, so this app does not accept uploads yet. Your agent\'s knowledge is managed in the Sarvam agent builder.',
-          'next'  => ['Add or update documents on the agent in Sarvam.', 'Publish a new agent version.', 'Update the version on the agent in My Agents so calls use it.'],
+          'what'  => 'Uploading documents here is not available yet. Your agent\'s knowledge is set up and maintained by our team.',
+          'next'  => ['Send us the documents your agent should answer from.', 'We add them to your agent and publish the change.', 'Answers drawn from them then appear in your call transcripts.'],
       ],
       'tools' => [
           'title' => 'Tools',
           'sub'   => 'Actions your agent can take during a call — webhooks, CRM updates, bookings.',
           'icon'  => 'icon-wrench',
-          'what'  => 'No tools are connected to the voice agent from this application, so none are listed as available. Tools such as webhooks or booking actions are configured on the agent in Sarvam.',
-          'next'  => ['Configure the tool on the agent in Sarvam.', 'Have the agent return its result as an output variable.', 'Results then appear on the call detail page here.'],
+          'what'  => 'No actions are switched on for your agent yet. Actions such as booking an appointment or posting a lead to your CRM are set up by our team.',
+          'next'  => ['Tell us which action you need during a call.', 'We configure it on your agent.', 'What it captured then appears on the call detail page here.'],
       ],
   ][$feature];
 @endphp

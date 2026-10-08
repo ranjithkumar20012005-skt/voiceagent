@@ -42,6 +42,34 @@ class SarvamException extends RuntimeException
     }
 
     /**
+     * The same failure, worded for a client.
+     *
+     * userMessage() above is an operator diagnostic: it names the provider and,
+     * for 401/402/429, our credentials and our account balance. None of that may
+     * reach a client dashboard, so anything client-facing uses this instead and
+     * the detail stays in the logs and the internal area.
+     *
+     * Deliberately coarse -- three outcomes a client can act on, rather than a
+     * translation of every upstream status.
+     */
+    public function clientMessage(): string
+    {
+        $messages = (array) config('voice.messages', []);
+
+        return match (true) {
+            // Our problem, not theirs: credentials, credit, quota, bad config.
+            in_array($this->status, [401, 402, 403, 422, 429], true)
+                => $messages['call_failed'] ?? 'Calling could not be started.',
+
+            // Transient: worth trying again.
+            $this->status === null || ($this->status >= 500 && $this->status <= 599)
+                => $messages['unavailable'] ?? 'Voice service is temporarily unavailable.',
+
+            default => $messages['call_failed'] ?? 'Calling could not be started.',
+        };
+    }
+
+    /**
      * The HTTP status this application should return to the browser.
      *
      * A misconfiguration on our side is not a "bad gateway" -- only a genuine

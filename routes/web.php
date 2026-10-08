@@ -1,13 +1,19 @@
 <?php
 
+use App\Http\Controllers\AgentBuilderController;
 use App\Http\Controllers\AgentController;
+use App\Http\Controllers\AgentSetupController;
+use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\AutomationController;
 use App\Http\Controllers\CallbackController;
 use App\Http\Controllers\CallController;
 use App\Http\Controllers\CallingController;
 use App\Http\Controllers\CampaignController;
+use App\Http\Controllers\ConversationController;
 use App\Http\Controllers\CustomerController;
+use App\Http\Controllers\Internal\AgentRequestController as InternalAgentRequestController;
+use App\Http\Controllers\Internal\ClientController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\InsightsController;
@@ -34,10 +40,18 @@ Route::post('/login', [AuthController::class, 'login'])
     ->middleware('throttle:10,1')
     ->name('login.submit');
 
+// Customer self-signup: creates the account and its workspace together.
+Route::get('/register', [RegisterController::class, 'show'])->name('register');
+Route::post('/register', [RegisterController::class, 'store'])
+    ->middleware('throttle:10,1')
+    ->name('register.submit');
+
 // ---------------------------------------------------------------
 // Authenticated application
 // ---------------------------------------------------------------
-Route::middleware('auth')->group(function () {
+// `workspace` resolves the tenant every query below is scoped by. It must stay
+// paired with `auth`: without it the model scopes have no workspace to filter on.
+Route::middleware(['auth', 'workspace'])->group(function () {
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
     // Overview
@@ -86,7 +100,10 @@ Route::middleware('auth')->group(function () {
 
     // Callbacks
     Route::get('/callbacks', [CallbackController::class, 'index'])->name('callbacks.index');
-    Route::post('/callbacks/{customer}/clear', [CallbackController::class, 'clear'])->name('callbacks.clear');
+    Route::post('/callbacks/{callback}/complete', [CallbackController::class, 'complete'])->name('callbacks.complete');
+    Route::post('/callbacks/{callback}/cancel', [CallbackController::class, 'cancel'])->name('callbacks.cancel');
+    // Clears the CRM reminder on a customer; kept for the Customers screens.
+    Route::post('/callbacks/customer/{customer}/clear', [CallbackController::class, 'clear'])->name('callbacks.clear');
 
     // Automations
     Route::get('/automations', [AutomationController::class, 'index'])->name('automations.index');
@@ -98,20 +115,104 @@ Route::middleware('auth')->group(function () {
     Route::get('/settings', [SettingsController::class, 'index'])->name('settings.index');
     Route::put('/settings', [SettingsController::class, 'update'])->name('settings.update');
 
-    // Agents -- pointers to agents that live in the voice platform.
+    // Agents. A client builds and runs their own.
+    //
+    // There used to be a second path here -- "Request from our team", a form
+    // that filed a brief for staff to build instead. Taken back out of the
+    // dashboard on request: one path, and creating an agent is the whole
+    // action, not the start of a conversation. AgentBuildRequest and the
+    // internal queue at internal.agent-requests.* still exist unlinked, in
+    // case the client-facing side comes back; nothing reaches them from here.
     Route::get('/agents', [AgentController::class, 'index'])->name('agents.index');
-    Route::get('/agents/create', [AgentController::class, 'create'])->name('agents.create');
-    Route::post('/agents', [AgentController::class, 'store'])->name('agents.store');
-    Route::get('/agents/{agent}/edit', [AgentController::class, 'edit'])->name('agents.edit');
-    Route::put('/agents/{agent}', [AgentController::class, 'update'])->name('agents.update');
-    Route::post('/agents/{agent}/default', [AgentController::class, 'makeDefault'])->name('agents.default');
-    Route::delete('/agents/{agent}', [AgentController::class, 'destroy'])->name('agents.destroy');
+
+    // Create / edit an agent from our own dashboard.
+    //
+    // Open to any signed-in workspace user: the form, the provisioning and the
+    // tenant scoping are the same whether a client builds their own agent here
+    // or our team builds it for them from the internal area.
+    Route::get('/agents/create', [AgentBuilderController::class, 'create'])->name('agents.create');
+    Route::post('/agents', [AgentBuilderController::class, 'store'])->name('agents.store');
+    Route::get('/agents/{agent}/edit', [AgentBuilderController::class, 'edit'])->name('agents.edit');
+    Route::put('/agents/{agent}', [AgentBuilderController::class, 'update'])->name('agents.update');
+    Route::get('/agents/{agent}/prompt', [AgentBuilderController::class, 'preview'])->name('agents.preview');
+    Route::post('/agents/{agent}/provision', [AgentBuilderController::class, 'provision'])
+        ->middleware('throttle:10,1')
+        ->name('agents.provision');
+
+    // How the agent gets people to call, and when it may call them.
+    Route::get('/agents/{agent}/setup', [AgentSetupController::class, 'show'])->name('agents.setup');
+    Route::put('/agents/{agent}/setup', [AgentSetupController::class, 'update'])->name('agents.setup.update');
+
+    // Instant leads: the connected sources.
+    Route::post('/agents/{agent}/sources', [AgentSetupController::class, 'addSource'])->name('agents.sources.store');
+    Route::post('/agents/{agent}/sources/{source}/toggle', [AgentSetupController::class, 'toggleSource'])->name('agents.sources.toggle');
+    Route::delete('/agents/{agent}/sources/{source}', [AgentSetupController::class, 'removeSource'])->name('agents.sources.destroy');
+
+    // Bulk: start the agent on a list.
+    Route::post('/agents/{agent}/campaign', [AgentSetupController::class, 'startCampaign'])
+        ->middleware('throttle:10,1')
+        ->name('agents.campaign.start');
+
+    // Scheduled calling: wake at a set time, work the list, follow up.
+    Route::post('/agents/{agent}/schedule', [AgentSetupController::class, 'saveSchedule'])->name('agents.schedule.save');
+    Route::delete('/agents/{agent}/schedule/{schedule}', [AgentSetupController::class, 'deleteSchedule'])->name('agents.schedule.destroy');
+    Route::post('/agents/{agent}/schedule/{schedule}/run', [AgentSetupController::class, 'runSchedule'])
+        ->middleware('throttle:10,1')
+        ->name('agents.schedule.run');
+
+    // Run / pause the agent itself.
+    Route::post('/agents/{agent}/start', [AgentSetupController::class, 'start'])->name('agents.start');
+    Route::post('/agents/{agent}/pause', [AgentSetupController::class, 'pause'])->name('agents.pause');
+
+    // Polled from the Agents page while a card is still building or sitting
+    // with the team -- see components/agent-card.blade.php.
+    Route::get('/agents/{agent}/card', [AgentController::class, 'cardFragment'])->name('agents.card');
+
+    // Declared after /agents/create so the literal path is matched first.
+    Route::get('/agents/{agent}', [AgentController::class, 'show'])->name('agents.show');
+
+    // Conversations -- the same call records as Call Logs, filtered to the ones
+    // that produced a transcript. No second copy of the transcript is stored.
+    Route::get('/conversations', [ConversationController::class, 'index'])->name('conversations.index');
+    Route::get('/conversations/{conversation}', [ConversationController::class, 'show'])->name('conversations.show');
 
     // Insights and deployment -- read-only, built from data we already hold.
     Route::get('/analytics', [InsightsController::class, 'analytics'])->name('analytics.index');
     Route::get('/usage', [InsightsController::class, 'usage'])->name('usage.index');
-    Route::get('/providers', [InsightsController::class, 'providers'])->name('providers.index');
+    // Internal staff only: this page reports the voice platform's configuration
+    // and connection state, which is ours. It 404s for a client.
+    Route::get('/providers', [InsightsController::class, 'providers'])
+        ->middleware('admin')
+        ->name('providers.index');
     Route::get('/phone-numbers', [InsightsController::class, 'phoneNumbers'])->name('phone-numbers.index');
     Route::get('/knowledge-base', [InsightsController::class, 'knowledge'])->name('knowledge.index');
     Route::get('/tools', [InsightsController::class, 'tools'])->name('tools.index');
+});
+
+// ---------------------------------------------------------------
+// Internal area -- our own team only
+// ---------------------------------------------------------------
+// Deliberately NOT inside the `workspace` group: an administrator works across
+// tenants, so these routes resolve the workspace from the URL instead. The
+// `admin` middleware is what closes the area -- it 404s for client users, so a
+// client cannot even tell it exists.
+Route::middleware(['auth', 'admin'])->prefix('internal')->name('internal.')->group(function () {
+    Route::get('/clients', [ClientController::class, 'index'])->name('clients.index');
+    Route::get('/clients/create', [ClientController::class, 'create'])->name('clients.create');
+    Route::post('/clients', [ClientController::class, 'store'])->name('clients.store');
+    Route::get('/clients/{workspace}', [ClientController::class, 'show'])->name('clients.show');
+
+    Route::post('/clients/{workspace}/agent', [ClientController::class, 'mapAgent'])->name('clients.agent.map');
+    Route::post('/clients/{workspace}/agent/{agentId}/status', [ClientController::class, 'setAgentStatus'])->name('clients.agent.status');
+    Route::post('/clients/{workspace}/users', [ClientController::class, 'addUser'])->name('clients.users.store');
+    Route::post('/clients/{workspace}/status', [ClientController::class, 'setWorkspaceStatus'])->name('clients.status');
+
+    Route::post('/numbers/import', [ClientController::class, 'importNumbers'])->name('numbers.import');
+    Route::post('/clients/{workspace}/numbers', [ClientController::class, 'assignNumber'])->name('clients.numbers.assign');
+    Route::delete('/clients/{workspace}/numbers/{numberId}', [ClientController::class, 'releaseNumber'])->name('clients.numbers.release');
+
+    // "Build it for us" requests, across every client at once -- the queue staff
+    // work from instead of waiting to be told a request landed on a client page.
+    Route::get('/agent-requests', [InternalAgentRequestController::class, 'index'])->name('agent-requests.index');
+    Route::put('/agent-requests/{agentBuildRequest}', [InternalAgentRequestController::class, 'update'])->name('agent-requests.update');
 });

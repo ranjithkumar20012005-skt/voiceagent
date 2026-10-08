@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Services\CallResultProcessor;
+use App\Services\CallWorkspaceResolver;
+use App\Support\Tenancy;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -21,8 +23,11 @@ use Illuminate\Support\Facades\Log;
  */
 class SarvamWebhookController extends Controller
 {
-    public function __construct(private readonly CallResultProcessor $processor)
-    {
+    public function __construct(
+        private readonly CallResultProcessor $processor,
+        private readonly CallWorkspaceResolver $resolver,
+        private readonly Tenancy $tenancy,
+    ) {
     }
 
     public function handle(Request $request, string $token): JsonResponse
@@ -52,11 +57,12 @@ class SarvamWebhookController extends Controller
             return response()->json(['error' => 'attempt_id is required'], 422);
         }
 
-        // When the payload names an app, it must be ours.
-        $expectedApp = (string) config('sarvam.app_id');
-        $payloadApp  = $payload['app_id'] ?? null;
+        // The agent in the payload identifies the client: each one has their own
+        // hosted agent in our account. An agent we do not know is not ours.
+        $payloadApp = $payload['app_id'] ?? null;
+        $resolved   = $this->resolver->resolve(is_string($payloadApp) ? $payloadApp : null);
 
-        if (is_string($payloadApp) && $expectedApp !== '' && ! hash_equals($expectedApp, $payloadApp)) {
+        if (! $resolved) {
             Log::warning('sarvam.webhook.rejected', [
                 'reason'     => 'app_id_mismatch',
                 'attempt_id' => $attemptId,
@@ -71,11 +77,18 @@ class SarvamWebhookController extends Controller
         }
 
         try {
-            $result = $this->processor->process($payload);
+            // Processed as the resolved client, so the call attempt, its customer
+            // and anything else written here are stamped with that workspace and
+            // land in the right dashboard.
+            $result = $this->tenancy->actingAs(
+                $resolved['workspace'],
+                fn () => $this->processor->process($payload, $resolved['agent']),
+            );
         } catch (\Throwable $e) {
             Log::error('sarvam.webhook.failed', [
-                'attempt_id' => $attemptId,
-                'message'    => $e->getMessage(),
+                'workspace_id' => $resolved['workspace']->id,
+                'attempt_id'   => $attemptId,
+                'message'      => $e->getMessage(),
             ]);
 
             // 500 lets the platform retry delivery; processing is idempotent.
@@ -83,9 +96,11 @@ class SarvamWebhookController extends Controller
         }
 
         Log::info('sarvam.webhook.received', [
-            'attempt_id' => $result['attempt_id'],
-            'created'    => $result['created'],
-            'duplicate'  => $result['duplicate'],
+            'workspace_id' => $resolved['workspace']->id,
+            'agent_id'     => $resolved['agent']?->id,
+            'attempt_id'   => $result['attempt_id'],
+            'created'      => $result['created'],
+            'duplicate'    => $result['duplicate'],
         ]);
 
         return response()->json([

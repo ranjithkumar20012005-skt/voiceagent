@@ -1,163 +1,145 @@
+{{--
+    One call, in full: the result page.
+
+    Rebuilt on CallResultPresenter and TranscriptPresenter. The previous version
+    printed the provider's attempt identifier in a details list; nothing
+    provider-side appears here now, and no raw JSON is dumped.
+--}}
 @extends('layouts.app')
 
 @section('title', 'Call Details')
-
-@php
-  use App\Support\CallStatus;
-  use App\Support\LeadOutcome;
-
-  $turns = $call->transcriptTurns();
-
-  /*
-   | Technical detail -- platform identifiers and the raw agent variables --
-   | is for internal operators only. In a normal client build (APP_DEBUG off)
-   | none of it is rendered at all.
-   */
-  $internal = (bool) config('app.debug');
-
-  $output = (array) ($call->output_agent_variables ?? []);
-  $summary = $output['customer_notes'] ?? $output['summary'] ?? null;
-  $back = url()->previous() === url()->current() ? route('calls.index') : url()->previous();
-@endphp
 
 @section('content')
 
 <div class="ph">
   <div class="ph-main">
-    <a href="{{ $back }}" class="ph-back"><i class="icon-arrow-left"></i> Back</a>
-    <h1>{{ $call->customer?->name ?: 'Unknown customer' }}</h1>
-    <div class="ph-meta">
-      <span class="badge {{ LeadOutcome::connectivityBadge($call) }}">{{ LeadOutcome::connectivityLabel($call) }}</span>
-      <span class="badge {{ LeadOutcome::badge($call->call_disposition) }}">{{ LeadOutcome::label($call->call_disposition) }}</span>
-      <span>{{ $call->display_phone }} · {{ $call->created_at->format('d M Y, g:i A') }}</span>
-    </div>
+    <div class="eyebrow"><a href="{{ route('calls.index') }}">Call Logs</a></div>
+    <h1>Call Details</h1>
+    <p class="ph-sub">
+      {{ $result->customerName() }} &middot;
+      {{ $result->startedAt()?->format('j M Y, g:i a') ?: 'Time not recorded' }}
+    </p>
   </div>
-
   <div class="ph-actions">
-    @if ($call->customer)
-      <a href="{{ route('customers.show', $call->customer) }}" class="btn btn-secondary btn-sm"><i class="icon-circle-user"></i> Customer</a>
+    @if ($transcript->hasTranscript())
+      <a href="{{ route('conversations.show', $call) }}" class="btn btn-secondary btn-sm">Conversation view</a>
     @endif
-    @if ($call->customer && ! $call->customer->do_not_call)
-      <button type="button" class="btn btn-primary btn-sm"
-              data-new-call
-              data-customer-id="{{ $call->customer->id }}"
-              data-name="{{ $call->customer->name }}"
-              data-phone="{{ $call->customer->phone_number }}"
-              data-policy="{{ $call->customer->policy_number }}"
-              @if ($call->agent_id) data-agent-id="{{ $call->agent_id }}" @endif>
-        <i class="icon-phone"></i> Call Again
-      </button>
+    @if ($call->customer)
+      <a href="{{ route('customers.show', $call->customer) }}" class="btn btn-ghost btn-sm">Customer</a>
     @endif
   </div>
 </div>
 
-<div class="split">
-
-  {{-- -------------------------------------------------------- Transcript --}}
-  <div class="card">
-    <div class="card-h">
-      <div><h2>Conversation Transcript</h2><p>As returned by the agent when the call ended.</p></div>
-      @if ($turns)
-        <span class="badge">{{ count($turns) }} turns</span>
-      @endif
-    </div>
-
-    <div class="card-b">
-      @forelse ($turns as $turn)
-        {{-- Always escaped: customer speech is untrusted input. --}}
-        <div class="turn {{ $turn['role'] }}">
-          <div class="turn-who">
-            @if ($turn['role'] === 'agent')
-              <i class="icon-bot"></i> Agent
-            @else
-              <i class="icon-circle-user"></i> Customer
-            @endif
-          </div>
-          <div class="turn-text">{{ $turn['text'] }}</div>
-        </div>
-      @empty
-        <x-empty icon="icon-message-square-text" title="{{ $call->status === CallStatus::COMPLETED ? 'No transcript' : 'Transcript pending' }}" compact>
-          @if ($call->status === CallStatus::COMPLETED)
-            No transcript was returned for this call.
-          @elseif ($call->status === CallStatus::FAILED)
-            The call did not go through, so there is no conversation to show.
-          @else
-            Transcript pending — it appears once the call completes.
-          @endif
-        </x-empty>
-      @endforelse
+{{-- ------------------------------------------------- Call facts --}}
+<div class="card mb-4">
+  <div class="card-h"><div><h2>Call</h2></div></div>
+  <div class="card-b">
+    <div class="grid cols-4">
+      <div><div class="stat-label">Customer</div><div>{{ $result->customerName() }}</div></div>
+      <div><div class="stat-label">Phone</div><div class="mono">{{ $result->phone() }}</div></div>
+      <div><div class="stat-label">Agent</div><div>{{ $result->agentName() }}</div></div>
+      <div><div class="stat-label">Direction</div><div>{{ $result->directionLabel() }}</div></div>
+      <div><div class="stat-label">Date</div><div>{{ $result->startedAt()?->format('j M Y') ?: '—' }}</div></div>
+      <div><div class="stat-label">Start time</div><div>{{ $result->startedAt()?->format('g:i a') ?: '—' }}</div></div>
+      <div><div class="stat-label">Duration</div><div>{{ $result->duration() ?: '—' }}</div></div>
+      <div>
+        <div class="stat-label">Call status</div>
+        <div><span class="badge">{{ $result->callStatusLabel() }}</span></div>
+      </div>
     </div>
   </div>
+</div>
 
-  {{-- ------------------------------------------------------- Side rail --}}
-  <div class="stack">
+<div class="grid cols-3">
+
+  <div style="grid-column: span 2">
+
+    {{-- ------------------------------------------------- Summary --}}
     <div class="card">
-      <div class="card-h"><div><h3>Call Details</h3></div></div>
+      <div class="card-h"><div><h2>Summary</h2></div></div>
+      <div class="card-b">
+        @if ($result->summary())
+          <p>{{ $result->summary() }}</p>
+        @else
+          <p class="text-sm muted">{{ $result->summaryFallback() }}</p>
+        @endif
+      </div>
+    </div>
+
+    {{-- ------------------------------------------------- Conversation --}}
+    <div class="card mt-4">
+      <div class="card-h"><div><h2>Conversation</h2><p>What was said, in order</p></div></div>
+      <div class="card-b">
+        <x-transcript :transcript="$transcript" />
+      </div>
+    </div>
+
+  </div>
+
+  <div>
+
+    {{-- ------------------------------------------------- Result --}}
+    <div class="card">
+      <div class="card-h"><div><h2>Result</h2></div></div>
       <div class="card-b">
         <dl class="kv">
-          <dt>Customer</dt><dd>{{ $call->customer?->name ?: 'Unknown' }}</dd>
-          <dt>Phone</dt><dd>{{ $call->display_phone }}</dd>
-          @if ($call->customer?->policy_number)
-            <dt>Policy</dt><dd>{{ $call->customer->policy_number }}</dd>
+          <dt>Outcome</dt><dd><span class="badge">{{ $result->outcomeLabel() }}</span></dd>
+          <dt>Lead status</dt>
+          <dd>
+            <span class="badge {{ $result->isInterested() ? 'badge-success' : '' }}">
+              {{ $result->leadStatusLabel() }}
+            </span>
+          </dd>
+          <dt>Interested</dt><dd>{{ $result->isInterested() ? 'Yes' : 'No' }}</dd>
+          @if ($result->languageLabel())
+            <dt>Language</dt><dd>{{ $result->languageLabel() }}</dd>
           @endif
-          <dt>Agent</dt><dd>{{ $call->agent?->name ?? 'Workspace agent' }}</dd>
-          <dt>Source</dt><dd>{{ $call->campaign_id ? 'Campaign' : 'Instant call' }}</dd>
-          <dt>Call time</dt><dd>{{ $call->started_at?->format('d M Y, g:i A') ?: $call->created_at->format('d M Y, g:i A') }}</dd>
-          <dt>Duration</dt><dd>{{ $call->duration_for_humans }}</dd>
-          <dt>Connectivity</dt><dd>{{ LeadOutcome::connectivityLabel($call) }}</dd>
-          <dt>Outcome</dt><dd>{{ LeadOutcome::label($call->call_disposition) }}</dd>
+          @if ($call->failure_reason)
+            <dt>Not completed</dt><dd>{{ $call->failure_reason }}</dd>
+          @endif
         </dl>
       </div>
     </div>
 
-    {{-- Next action: only when the agent actually reported one. --}}
-    @if ($call->callback_at || $call->lead_generated)
-      <div class="card">
-        <div class="card-h"><div><h3>Next Action</h3></div></div>
-        <div class="card-b stack" style="gap:10px">
-          @if ($call->lead_generated)
-            <div class="row"><span class="badge badge-success">Hot Lead</span><span class="text-sm muted">Worth a follow-up from your team.</span></div>
-          @endif
-          @if ($call->callback_at)
-            <div class="row"><span class="badge badge-teal">Callback</span><span class="text-sm muted">{{ $call->callback_at->format('d M Y, g:i A') }}</span></div>
-          @endif
-        </div>
-      </div>
-    @endif
-
-    @if (filled($summary))
-      <div class="card">
-        <div class="card-h"><div><h3>Summary</h3><p>Notes recorded by the agent</p></div></div>
-        <div class="card-b"><p class="text-sm">{{ is_scalar($summary) ? $summary : json_encode($summary) }}</p></div>
-      </div>
-    @endif
-
-    {{-- Internal operators only. Never rendered in a client build. --}}
-    @if ($internal)
-      <div class="card">
-        <div class="card-h"><div><h3>Internal Detail</h3></div><span class="badge badge-warning">Debug build</span></div>
-        <div class="card-b">
+    {{-- ------------------------------------------------- Callback --}}
+    <div class="card mt-4">
+      <div class="card-h"><div><h2>Callback</h2></div></div>
+      <div class="card-b">
+        @if ($result->callbackRequired())
           <dl class="kv">
-            <dt>Local status</dt><dd>{{ ucfirst($call->status) }}</dd>
-            <dt>Attempt ID</dt><dd><code>{{ $call->attempt_id ?: 'Pending' }}</code></dd>
-            @if ($call->failure_reason)
-              <dt>Failure reason</dt><dd class="text-bad">{{ $call->failure_reason }}</dd>
+            <dt>Required</dt><dd>Yes</dd>
+            <dt>When</dt><dd>{{ $result->callbackAt()?->format('j M Y, g:i a') ?: 'Time not given' }}</dd>
+            @if ($callback)
+              <dt>Status</dt><dd><span class="badge">{{ ucfirst($callback->status) }}</span></dd>
+              @if ($callback->reason)
+                <dt>Reason</dt><dd>{{ $callback->reason }}</dd>
+              @endif
             @endif
-            @foreach ($output as $key => $value)
-              <dt class="break">{{ $key }}</dt>
-              <dd>
-                @if (is_scalar($value) || $value === null)
-                  {{ $value === null ? '--' : (is_bool($value) ? ($value ? 'true' : 'false') : $value) }}
-                @else
-                  <code>{{ json_encode($value, JSON_UNESCAPED_UNICODE) }}</code>
-                @endif
-              </dd>
+          </dl>
+        @else
+          <p class="text-sm muted">No callback required.</p>
+        @endif
+      </div>
+    </div>
+
+    {{-- ------------------------------------------------- Captured --}}
+    <div class="card mt-4">
+      <div class="card-h"><div><h2>Captured information</h2></div></div>
+      <div class="card-b">
+        @if ($result->hasCapturedFields())
+          <dl class="kv">
+            @foreach ($result->capturedFields() as $field)
+              <dt>{{ $field['label'] }}</dt><dd>{{ $field['value'] }}</dd>
             @endforeach
           </dl>
-        </div>
+        @else
+          <p class="text-sm muted">Nothing was captured on this call.</p>
+        @endif
       </div>
-    @endif
+    </div>
+
   </div>
+
 </div>
 
 @endsection

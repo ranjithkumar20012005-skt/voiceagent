@@ -714,6 +714,34 @@ a.cell-main:hover { color: var(--green-700); }
 .agent-meta span { display: inline-flex; align-items: center; gap: 5px; }
 .agent-meta i { font-size: 13px; }
 
+.agent-figures { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+.agent-figures .figure { display: block; font-weight: 600; font-size: 18px; line-height: 1.2; }
+.agent-figures .figure-label { display: block; font-size: 11px; opacity: .65; }
+
+/* An agent still being built: shimmering placeholders in place of real figures,
+   and a glow on the avatar instead of a spinner -- the same "something is
+   happening" language ElevenLabs uses while a voice clones, not a progress bar
+   claiming a percent we cannot actually know. */
+.agent-building-copy { color: var(--ink-500); margin-top: 2px; min-height: 18px; }
+.agent-avatar.building { animation: avatar-glow 1.8s var(--ease) infinite; }
+@keyframes avatar-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(0, 168, 157, .35); }
+  50%      { box-shadow: 0 0 0 7px rgba(0, 168, 157, 0); }
+}
+.skeleton-line, .skeleton-chip {
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--ink-100) 25%, var(--ink-50) 50%, var(--ink-100) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-sweep 1.4s ease-in-out infinite;
+}
+.skeleton-line { height: 9px; }
+.skeleton-chip { display: block; width: 28px; height: 18px; margin: 0 auto 4px; }
+@keyframes skeleton-sweep { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+/* The moment a building/awaiting card is swapped for its finished self. */
+.agent-card-reveal { animation: agent-card-reveal .45s var(--ease); }
+@keyframes agent-card-reveal { from { opacity: 0; transform: translateY(4px) scale(.98); } to { opacity: 1; transform: none; } }
+
 /* ------------------------------------------------------------ Modal */
 .modal { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; padding: 16px; opacity: 0; pointer-events: none; transition: opacity .18s; }
 .modal.open { opacity: 1; pointer-events: auto; }

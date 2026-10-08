@@ -15,6 +15,23 @@ class AutomationDispatchTest extends TestCase
 {
     use RefreshDatabase;
 
+    /**
+     * Pin the tenant for these fixtures.
+     *
+     * A schedule belongs to a client now: the dispatcher runs each one as its own
+     * workspace, and one with none is skipped rather than being allowed to select
+     * across every client's customers. So the fixtures need a workspace, and the
+     * default one is where a callback with no agent mapping also lands.
+     */
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        app(\App\Support\Tenancy::class)->set(
+            \App\Models\Workspace::where('slug', 'default')->first() ?? $this->makeWorkspace('Default Workspace'),
+        );
+    }
+
     private function automation(array $overrides = []): Automation
     {
         return Automation::create(array_merge([

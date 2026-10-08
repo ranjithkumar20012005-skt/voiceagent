@@ -18,6 +18,26 @@ return Application::configure(basePath: dirname(__DIR__))
         // Honour X-Forwarded-* from a tunnel / reverse proxy so generated URLs
         // use the public https host instead of http://127.0.0.1.
         $middleware->trustProxies(at: '*');
+
+        // Resolves the workspace every tenant-scoped query filters on. Applied
+        // alongside `auth` on the authenticated route group.
+        $middleware->alias([
+            'workspace' => \App\Http\Middleware\ResolveWorkspace::class,
+            'admin'     => \App\Http\Middleware\EnsureInternalAdmin::class,
+        ]);
+
+        // ResolveWorkspace MUST run before route-model binding.
+        //
+        // SubstituteBindings resolves {agent}, {call} and friends by querying the
+        // model, and that query is only tenant-filtered if a workspace is already
+        // in context. By default bindings are substituted first, so a client could
+        // load another client's record simply by putting its id in the URL -- the
+        // scope had nothing to filter on yet. Ordering it before bindings is what
+        // makes the 404 real rather than incidental.
+        $middleware->prependToPriorityList(
+            before: \Illuminate\Routing\Middleware\SubstituteBindings::class,
+            prepend: \App\Http\Middleware\ResolveWorkspace::class,
+        );
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

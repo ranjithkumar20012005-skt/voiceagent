@@ -2,9 +2,11 @@
 
 namespace App\Services;
 
+use App\Models\Callback;
 use App\Models\CallAttempt;
 use App\Models\Campaign;
 use App\Models\Customer;
+use App\Models\UsageRecord;
 use App\Support\CallStatus;
 use Illuminate\Support\Facades\DB;
 
@@ -237,6 +239,43 @@ class DashboardMetrics
      *
      * @return array<string,mixed>
      */
+    /**
+     * The headline figures on the client dashboard.
+     *
+     * Every number is an aggregate of calls and results we actually hold. Where a
+     * rate cannot be computed -- no calls yet, so no denominator -- it comes back
+     * null and the view prints a dash, rather than a misleading zero per cent.
+     *
+     * @return array<string,mixed>
+     */
+    public function clientHeadline(): array
+    {
+        $today = $this->totals(today());
+        $month = $this->totals(now()->startOfMonth());
+
+        $usage = UsageRecord::query()
+            ->where('created_at', '>=', now()->startOfMonth())
+            ->selectRaw('COUNT(*) AS calls, COALESCE(SUM(billable_minutes), 0) AS minutes')
+            ->first();
+
+        return [
+            'calls_today'          => $today['total_calls'],
+            'calls_month'          => $month['total_calls'],
+            'answered'             => $month['connected'],
+            'no_answer'            => $month['no_answer'],
+            'failed'               => $month['failed'],
+            'interested'           => $month['leads'],
+            'not_interested'       => $month['not_interested'],
+            'avg_duration_human'   => $month['avg_duration_human'],
+            // Interested out of answered: a call nobody picked up cannot convert.
+            'conversion_rate'      => $month['lead_rate'],
+            'callbacks_due'        => Callback::dueNow()->count(),
+            'callbacks_upcoming'   => Callback::pending()->where('scheduled_at', '>', now())->count(),
+            'usage_calls_month'    => (int) ($usage->calls ?? 0),
+            'usage_minutes_month'  => (float) ($usage->minutes ?? 0),
+        ];
+    }
+
     public function totals(?\DateTimeInterface $since = null): array
     {
         $calls = CallAttempt::query();
@@ -254,6 +293,7 @@ class DashboardMetrics
             SUM(CASE WHEN status IN ('queued', 'dispatched') THEN 1 ELSE 0 END) AS in_flight,
             SUM(CASE WHEN lead_generated = 1 OR call_disposition = 'interested' THEN 1 ELSE 0 END) AS leads,
             SUM(CASE WHEN lead_generated = 1 THEN 1 ELSE 0 END) AS qualified,
+            SUM(CASE WHEN call_disposition = 'not_interested' THEN 1 ELSE 0 END) AS not_interested,
             SUM(CASE WHEN call_disposition = 'callback' THEN 1 ELSE 0 END) AS callbacks_requested,
             SUM(COALESCE(duration_seconds, 0)) AS talk_time,
             SUM(CASE WHEN duration_seconds IS NOT NULL THEN 1 ELSE 0 END) AS with_duration
@@ -274,6 +314,7 @@ class DashboardMetrics
             'in_flight'           => (int) ($row->in_flight ?? 0),
             'leads'               => (int) ($row->leads ?? 0),
             'qualified'           => (int) ($row->qualified ?? 0),
+            'not_interested'      => (int) ($row->not_interested ?? 0),
             'callbacks_requested' => (int) ($row->callbacks_requested ?? 0),
             'connect_rate'        => $total > 0 ? round($connected / $total * 100, 1) : null,
             'lead_rate'           => $connected > 0 ? round((int) ($row->leads ?? 0) / $connected * 100, 1) : null,

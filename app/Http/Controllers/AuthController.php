@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Membership;
 use App\Models\User;
+use App\Models\Workspace;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
@@ -55,6 +57,26 @@ class AuthController extends Controller
             ['email' => 'demo@voiceagent.local'],
             ['name' => 'Demo User', 'password' => Str::random(40)],
         );
+
+        // Every signed-in account needs a workspace: it is what each query is
+        // scoped by, and an account without one is signed straight back out.
+        // The demo shares the default workspace rather than getting its own.
+        $workspace = Workspace::where('slug', 'default')->first()
+            ?? Workspace::create([
+                'name'   => 'Default Workspace',
+                'slug'   => 'default',
+                'status' => 'active',
+            ]);
+
+        if (! $demo->belongsToWorkspace($workspace)) {
+            Membership::create([
+                'workspace_id' => $workspace->id,
+                'user_id'      => $demo->id,
+                'role'         => Membership::MEMBER,
+            ]);
+        }
+
+        $demo->forceFill(['current_workspace_id' => $workspace->id])->save();
 
         Auth::login($demo);
         $request->session()->regenerate();
