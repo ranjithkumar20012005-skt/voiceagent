@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Agent;
+use App\Models\Callback;
 use App\Services\DashboardMetrics;
 use App\Services\SarvamVoiceService;
 use Illuminate\Http\JsonResponse;
@@ -29,7 +31,15 @@ class DashboardController extends Controller
             'series'     => $this->metrics->callsOverTime(14),
             'outcomes'   => $this->metrics->outcomesSince(),
             'campaign'   => $this->metrics->activeCampaignProgress(),
-            'callbacks'  => $this->metrics->upcomingCallbacks(5),
+            // The callbacks table, so the panel shows the same records as the
+            // Callbacks page rather than the older customer reminder field.
+            'callbacks'  => Callback::with(['customer', 'agent'])->pending()->orderBy('scheduled_at')->limit(5)->get(),
+            // The headline set: this month's answered / no answer / failed /
+            // interested / conversion, plus usage. Every figure is an aggregate
+            // of stored results; a rate with no denominator comes back null and
+            // the view prints a dash rather than a misleading zero.
+            'headline'   => $this->metrics->clientHeadline(),
+            'agents'     => Agent::orderByDesc('is_default')->orderBy('name')->get(),
         ]);
     }
 

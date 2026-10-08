@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Agent;
 use App\Models\CallAttempt;
 use App\Models\Customer;
 use App\Support\CallStatus;
@@ -19,11 +20,17 @@ use Illuminate\Support\Facades\Log;
  */
 class CallResultProcessor
 {
+    public function __construct(
+        private readonly CallbackRecorder $callbacks,
+        private readonly UsageRecorder $usage,
+    ) {
+    }
+
     /**
      * @param  array<string,mixed>  $payload
      * @return array{attempt_id:string, created:bool, duplicate:bool}
      */
-    public function process(array $payload): array
+    public function process(array $payload, ?Agent $agent = null): array
     {
         $attemptId = $this->str($payload['attempt_id'] ?? null);
 
@@ -31,7 +38,7 @@ class CallResultProcessor
             throw new \InvalidArgumentException('Payload is missing attempt_id.');
         }
 
-        return DB::transaction(function () use ($payload, $attemptId) {
+        return DB::transaction(function () use ($payload, $attemptId, $agent) {
             // Lock the row so two concurrent deliveries of the same webhook
             // cannot both pass the "already processed?" check.
             $attempt = CallAttempt::where('attempt_id', $attemptId)->lockForUpdate()->first();
@@ -41,6 +48,13 @@ class CallResultProcessor
             if (! $attempt) {
                 $attempt = new CallAttempt(['attempt_id' => $attemptId, 'direction' => 'outbound']);
                 $created = true;
+            }
+
+            // Attribute the call when the resolver identified the client's agent
+            // and nothing set it already -- a call we placed ourselves recorded
+            // the agent at dial time.
+            if ($agent && ! $attempt->agent_id) {
+                $attempt->agent_id = $agent->id;
             }
 
             $alreadyFinal = $attempt->exists && $attempt->status === CallStatus::COMPLETED;
@@ -56,6 +70,13 @@ class CallResultProcessor
             if (! $alreadyFinal && $attempt->customer_id) {
                 $this->updateCustomer($attempt);
             }
+
+            // Callback and usage are written on every delivery, not just the
+            // first: both are keyed on the call and guarded by unique indexes, so
+            // a replay corrects the existing row instead of adding another. That
+            // also means a corrected result still updates them.
+            $this->callbacks->record($attempt);
+            $this->usage->record($attempt);
 
             return [
                 'attempt_id' => $attemptId,
@@ -125,6 +146,26 @@ class CallResultProcessor
             $attempt->transcript = $payload['interaction_transcript'];
         }
 
+        // --- summary & language --------------------------------------------
+        // Recorded only when the platform actually sends them. No summary is
+        // generated here, so a null genuinely means "none was provided" and the
+        // result page says so instead of inventing one.
+        foreach (['summary', 'call_summary', 'interaction_summary'] as $key) {
+            if ($summary = $this->str($payload[$key] ?? null)) {
+                $attempt->summary = $summary;
+                break;
+            }
+        }
+
+        $language = $this->str($payload['language'] ?? null)
+            ?? $this->str($payload['detected_language'] ?? null)
+            ?? $this->str($payload['app_overrides']['initial_language_name'] ?? null)
+            ?? $this->str($payload['channel_info']['language'] ?? null);
+
+        if ($language) {
+            $attempt->language = $language;
+        }
+
         // --- business outcome ---------------------------------------------
         $this->applyOutputVariables($attempt);
 
@@ -173,12 +214,20 @@ class CallResultProcessor
             $attempt->lead_generated = $this->bool($v);
         }
 
+        $callbackWanted = null;
+
         if (($v = $get('callback_required')) !== null) {
-            $attempt->callback_required = $this->bool($v);
+            $callbackWanted = $this->bool($v);
+            $attempt->callback_required = $callbackWanted;
         }
 
         if (($v = $get('callback_at')) !== null && ($when = $this->date($v))) {
             $attempt->callback_at = $when;
+        } elseif ($callbackWanted === false) {
+            // A corrected result that says no callback is needed has to clear the
+            // time an earlier delivery recorded, or the stale timestamp would keep
+            // the callback alive and contradict what the agent now reports.
+            $attempt->callback_at = null;
         }
     }
 

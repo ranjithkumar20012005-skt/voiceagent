@@ -43,34 +43,70 @@ class ProductUpgradeTest extends TestCase
     // Agents
     // =================================================================
 
-    public function test_an_agent_can_be_created_and_becomes_the_default(): void
+    /**
+     * Reworked for the prebuilt-agent model: agents are mapped by our team from
+     * the internal area, not created by the client. The client-facing create,
+     * edit and delete routes no longer exist.
+     */
+    public function test_a_client_cannot_create_or_edit_an_agent(): void
     {
         $this->signIn();
 
-        $this->post('/agents', [
-            'name'                 => 'Renewals Hindi',
-            'platform_app_id'      => 'Renewal-hi-01',
-            'platform_app_version' => 3,
-            'default_language'     => 'Hindi',
-            'status'               => 'active',
-        ])->assertRedirect();
+        // The agent-building routes exist now, but they sit behind the `admin`
+        // middleware, which 404s a client rather than admitting the area is
+        // there. Opening this up to clients is a deliberate decision, and this
+        // test is what fails if that middleware is ever dropped by accident.
+        $this->get('/agents/create')->assertNotFound();
+        $this->post('/agents', ['name' => 'Mine'])->assertNotFound();
 
-        $agent = Agent::firstOrFail();
-        $this->assertTrue($agent->is_default);
-        $this->assertSame(['app_id' => 'Renewal-hi-01', 'app_version' => 3], $agent->platformApp());
+        $agent = Agent::create(['name' => 'Theirs', 'status' => Agent::ACTIVE]);
 
-        $this->get('/agents')->assertOk()->assertSee('Renewals Hindi')->assertSee('Workspace agent');
-        $this->get("/agents/{$agent->id}/edit")->assertOk()->assertSee('Renewal-hi-01');
+        $this->get("/agents/{$agent->id}/edit")->assertNotFound();
+        $this->put("/agents/{$agent->id}", ['name' => 'Renamed'])->assertNotFound();
+        $this->get("/agents/{$agent->id}/prompt")->assertNotFound();
+        $this->post("/agents/{$agent->id}/provision")->assertNotFound();
+
+        // Nothing was created and nothing was renamed.
+        $this->assertSame(1, Agent::count());
+        $this->assertSame('Theirs', $agent->fresh()->name);
+
+        // Reading it is fine -- that is the point of the page.
+        $this->get("/agents/{$agent->id}")->assertOk()->assertSee('Theirs');
     }
 
-    public function test_an_agent_id_requires_a_version(): void
+    public function test_an_agent_mapped_internally_becomes_the_workspace_default(): void
     {
-        $this->signIn();
+        [$workspace] = $this->makeClient('ABC Hospital');
+        $this->actingAsInternalAdmin();
 
-        $this->post('/agents', ['name' => 'Half set up', 'platform_app_id' => 'abc', 'status' => 'active'])
-            ->assertSessionHasErrors('platform_app_version');
+        $this->post(route('internal.clients.agent.map', $workspace), [
+            'display_name'           => 'Maya',
+            'provider_agent_id'      => 'Renewal-hi-01',
+            'provider_agent_version' => 3,
+            'default_language'       => 'Hindi',
+            'calling_mode'           => Agent::MODE_INSTANT_LEADS,
+        ])->assertRedirect();
 
-        $this->assertDatabaseCount('agents', 0);
+        $agent = Agent::withoutGlobalScope('workspace')->where('workspace_id', $workspace->id)->firstOrFail();
+
+        $this->assertTrue($agent->is_default);
+        $this->assertSame(Agent::READY, $agent->status);
+        $this->assertSame(['app_id' => 'Renewal-hi-01', 'app_version' => 3], $agent->providerApp());
+        $this->assertSame('agent_01', $agent->agent_ref);
+    }
+
+    public function test_mapping_an_agent_requires_an_id_and_a_version(): void
+    {
+        [$workspace] = $this->makeClient('Half Set Up');
+        $this->actingAsInternalAdmin();
+
+        $this->post(route('internal.clients.agent.map', $workspace), [
+            'display_name'      => 'Incomplete',
+            'provider_agent_id' => 'abc',
+            'calling_mode'      => Agent::MODE_INSTANT_LEADS,
+        ])->assertSessionHasErrors('provider_agent_version');
+
+        $this->assertSame(0, Agent::withoutGlobalScope('workspace')->where('workspace_id', $workspace->id)->count());
     }
 
     public function test_a_call_uses_the_selected_agents_app(): void
@@ -78,7 +114,10 @@ class ProductUpgradeTest extends TestCase
         $this->signIn();
         Http::fake(['voice.test/*' => Http::response(['attempt_id' => 'att-agent'], 200)]);
 
-        $agent = Agent::create(['name' => 'Tamil', 'platform_app_id' => 'App-ta', 'platform_app_version' => 7, 'status' => 'active']);
+        // forceFill because the provider identifiers are not mass-assignable:
+        // only the internal mapping service is allowed to set them.
+        $agent = Agent::create(['name' => 'Tamil', 'status' => 'active']);
+        $agent->forceFill(['provider_agent_id' => 'App-ta', 'provider_agent_version' => 7])->save();
 
         $this->postJson('/calls', ['phone_number' => '9876543210', 'agent_id' => $agent->id])
             ->assertOk()->assertJson(['ok' => true]);
@@ -115,20 +154,37 @@ class ProductUpgradeTest extends TestCase
         Http::assertNothingSent();
     }
 
-    public function test_an_agent_with_call_history_is_deactivated_not_deleted(): void
+    /**
+     * Reworked: deleting an agent was a client action and is now neither. An
+     * agent is paused by our team instead, which keeps its call history intact
+     * -- that history is the client's record of what happened, so nothing about
+     * stopping an agent may remove it.
+     */
+    public function test_an_agent_is_paused_internally_and_keeps_its_history(): void
     {
-        $this->signIn();
+        [$workspace, $client] = $this->makeClient('Busy Clinic');
 
-        $agent = Agent::create(['name' => 'Busy', 'status' => 'active']);
-        $this->makeCall(['agent_id' => $agent->id]);
+        $agent = $this->withinWorkspace($workspace, function () {
+            $agent = Agent::create(['name' => 'Busy', 'status' => Agent::ACTIVE]);
+            $this->makeCall(['agent_id' => $agent->id]);
 
-        $this->delete("/agents/{$agent->id}")->assertRedirect('/agents');
+            return $agent;
+        });
 
-        $this->assertSame('inactive', $agent->fresh()->status);
+        $this->actingAsInternalAdmin();
 
-        $unused = Agent::create(['name' => 'Unused', 'status' => 'active']);
-        $this->delete("/agents/{$unused->id}");
-        $this->assertModelMissing($unused);
+        $this->post(route('internal.clients.agent.status', [$workspace, $agent->id]), ['status' => Agent::PAUSED])
+            ->assertRedirect();
+
+        $paused = Agent::withoutGlobalScope('workspace')->findOrFail($agent->id);
+
+        $this->assertSame(Agent::PAUSED, $paused->status);
+        $this->assertFalse($paused->isActive());
+        $this->assertSame(1, CallAttempt::withoutGlobalScope('workspace')->where('agent_id', $agent->id)->count());
+
+        // The client can still see the agent and its calls; it simply will not run.
+        $this->actingAsClient($workspace, $client);
+        $this->get('/agents')->assertOk()->assertSee('Busy')->assertSee('Paused');
     }
 
     // =================================================================
@@ -150,16 +206,21 @@ class ProductUpgradeTest extends TestCase
         $agent = Agent::create(['name' => 'Renewals', 'status' => 'active']);
 
         foreach ([
-            '/dashboard' => 'Meera Nair', '/agents' => 'Renewals', '/agents/create' => 'Create Agent',
-            "/agents/{$agent->id}/edit" => 'Renewals', '/calling' => 'Instant AI Call',
+            // No /agents/create or /agents/{id}/edit: agents are mapped by our
+            // team from the internal area, so those client routes are gone.
+            '/dashboard' => 'Meera Nair', '/agents' => 'Renewals',
+            '/calling' => 'Instant AI Call',
             '/campaigns' => 'October run', "/campaigns/{$campaign->id}" => 'Not reached',
             '/customers' => 'Meera Nair', "/customers/{$customer->id}" => 'October run',
             '/imports' => 'list.csv', "/imports/{$batch->id}" => 'Malformed phone',
             '/leads' => 'Qualified', '/leads?filter=qualified' => 'Meera Nair',
             '/calls' => 'Meera Nair', "/calls/{$call->id}" => 'Call Details',
-            '/callbacks?range=overdue' => 'Overdue', '/automations' => 'Daily renewals',
+            // Callbacks now read the callbacks table, with Due now in place of
+            // the old Overdue tab.
+            '/callbacks' => 'Callbacks', '/callbacks?range=due' => 'Due now',
+            '/conversations' => 'Conversations', '/automations' => 'Daily renewals',
             '/analytics' => 'Campaign performance', '/usage' => 'Conversation minutes',
-            '/providers' => 'Speech-to-Text', '/phone-numbers' => 'Numbers',
+            '/phone-numbers' => 'Numbers',
             '/knowledge-base' => 'Not connected', '/tools' => 'Not connected', '/settings' => 'Calling defaults',
         ] as $url => $text) {
             $this->get($url)->assertOk()->assertSee($text, false);
@@ -215,7 +276,7 @@ class ProductUpgradeTest extends TestCase
         $this->signIn();
         $this->makeCall();
 
-        foreach (['/agents', '/agents/create', '/providers', '/phone-numbers', '/settings', '/analytics', '/usage', '/knowledge-base', '/tools', '/campaigns', '/customers', '/callbacks', '/automations', '/imports'] as $url) {
+        foreach (['/agents', '/phone-numbers', '/settings', '/analytics', '/usage', '/knowledge-base', '/tools', '/campaigns', '/customers', '/callbacks', '/automations', '/imports'] as $url) {
             $body = $this->get($url)->assertOk()->getContent();
 
             foreach (['sk-super-secret-key-123', 'whk-secret-token-456789', 'org-private-778', 'ws-private-889', 'conn-private-990'] as $secret) {

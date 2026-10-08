@@ -52,6 +52,14 @@
         </div>
       @endif
       <div class="field fixed">
+        <label class="label" for="direction">Direction</label>
+        <select id="direction" name="direction" class="select">
+          <option value="">Both</option>
+          <option value="outbound" @selected(request('direction') === 'outbound')>Outbound</option>
+          <option value="inbound" @selected(request('direction') === 'inbound')>Inbound</option>
+        </select>
+      </div>
+      <div class="field fixed">
         <label class="label" for="from">From</label>
         <input type="date" id="from" name="from" value="{{ request('from') }}" class="input">
       </div>
@@ -61,7 +69,7 @@
       </div>
       <div class="row">
         <button type="submit" class="btn btn-primary"><i class="icon-filter"></i> Apply</button>
-        @if ($search || request('from') || request('to') || request('agent'))
+        @if ($search || request('from') || request('to') || request('agent') || request('direction'))
           <a href="{{ route('calls.index', ['filter' => $filter]) }}" class="btn btn-ghost">Reset</a>
         @endif
       </div>

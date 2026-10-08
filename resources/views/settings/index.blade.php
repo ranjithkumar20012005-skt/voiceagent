@@ -55,20 +55,36 @@
 
   {{-- ----------------------------------------------------------- Agent --}}
   <div data-tab-panel="agent" data-tab-scope="settings" hidden>
+    {{--
+        Was a panel of platform identifiers read from the server environment --
+        agent id, version, caller number and the provider's variable names. None
+        of that is the client's to see, so this now summarises their own agents.
+    --}}
     <div class="card">
       <div class="card-h">
-        <div class="card-h-title"><div class="card-icon"><i class="icon-bot"></i></div><div><h2>Workspace agent</h2><p>The agent used when no other agent is selected</p></div></div>
-        <a href="{{ route('agents.index') }}" class="btn btn-secondary btn-sm">Manage agents</a>
+        <div class="card-h-title"><div class="card-icon"><i class="icon-bot"></i></div><div><h2>Your agent</h2><p>Set up and maintained by our team</p></div></div>
+        <a href="{{ route('agents.index') }}" class="btn btn-secondary btn-sm">View agents</a>
       </div>
       <div class="card-b">
-        <dl class="kv">
-          <dt>Status</dt>
-          <dd><span class="badge {{ $status['configured'] ? 'badge-success' : 'badge-warning' }}"><span class="dot"></span>{{ $status['configured'] ? 'Active' : 'Not configured' }}</span></dd>
-          <dt>Agent ID</dt><dd class="mono">{{ $status['agent_name'] ?: 'Not configured' }}</dd>
-          <dt>Agent version</dt><dd>{{ $status['agent_version'] ?: 'Not configured' }}</dd>
-          <dt>Caller number</dt><dd>{{ $status['caller_number'] ?: 'Not configured' }}</dd>
-          <dt>Variables sent</dt><dd>{{ implode(', ', array_keys(config('sarvam.agent_variables', []))) }}</dd>
-        </dl>
+        @if ($primaryAgent)
+          <dl class="kv">
+            <dt>Agent</dt><dd>{{ $primaryAgent->name }}</dd>
+            <dt>Status</dt>
+            <dd>
+              <span class="badge {{ $primaryAgent->isActive() ? 'badge-success' : 'badge-warning' }}">
+                <span class="dot"></span>{{ $primaryAgent->displayStatus() }}
+              </span>
+            </dd>
+            <dt>Calling mode</dt><dd>{{ $primaryAgent->callingModeLabel() }}</dd>
+            <dt>Language</dt><dd>{{ $primaryAgent->default_language ?: 'Default' }}</dd>
+            <dt>Phone number</dt><dd class="mono">{{ $primaryAgent->phoneNumber?->phone_number ?: 'Not assigned yet' }}</dd>
+          </dl>
+        @else
+          <p class="text-sm muted">Your agent is being set up. It will appear here once it is ready.</p>
+        @endif
+        <p class="text-xs muted mt-3">
+          To change what your agent says, the language it speaks or the number it calls from, contact us and we will update it.
+        </p>
       </div>
     </div>
   </div>
@@ -119,17 +135,26 @@
       </div>
       <div class="card-b">
         <dl class="kv">
-          <dt>Voice platform</dt>
-          <dd><span class="badge {{ $status['configured'] ? 'badge-success' : 'badge-warning' }}">{{ $status['configured'] ? 'Configured' : 'Not configured' }}</span></dd>
-          <dt>Result webhook</dt>
-          <dd><span class="badge {{ $status['webhook_configured'] ? 'badge-success' : 'badge-warning' }}">{{ $status['webhook_configured'] ? 'Configured' : 'Not configured' }}</span></dd>
+          <dt>Calling service</dt>
+          <dd><span class="badge {{ $status['configured'] ? 'badge-success' : 'badge-warning' }}">{{ $status['configured'] ? 'Available' : 'Unavailable' }}</span></dd>
+          <dt>Result delivery</dt>
+          <dd><span class="badge {{ $status['webhook_configured'] ? 'badge-success' : 'badge-warning' }}">{{ $status['webhook_configured'] ? 'Active' : 'Inactive' }}</span></dd>
         </dl>
 
-        {{-- Names of missing settings only -- never their values. --}}
+        {{--
+            The names of the missing environment variables were listed here. They
+            name the provider and its configuration keys, which is ours and not
+            the client's, so our own team sees the detail and a client sees only
+            that something is being worked on.
+        --}}
         @if ($missing)
           <div class="callout callout-warning mt-4">
             <i class="icon-key-round"></i>
-            <div><strong>Missing server configuration:</strong> {{ implode(', ', $missing) }}<br>These are environment variables set on the server by an administrator.</div>
+            @if (auth()->user()?->is_internal_admin)
+              <div><strong>Missing server configuration:</strong> {{ implode(', ', $missing) }}<br>Environment variables set on the server. Visible to internal staff only.</div>
+            @else
+              <div><strong>Calling is not available yet.</strong><br>We are finishing the setup for your account and will let you know as soon as it is ready.</div>
+            @endif
           </div>
         @endif
       </div>

@@ -6,6 +6,8 @@ use App\Http\Requests\StoreCallRequest;
 use App\Models\Agent;
 use App\Models\CallAttempt;
 use App\Models\Customer;
+use App\Services\Presenters\CallResultPresenter;
+use App\Services\Presenters\TranscriptPresenter;
 use App\Services\SarvamException;
 use App\Services\SarvamVoiceService;
 use App\Support\CallStatus;
@@ -57,6 +59,10 @@ class CallController extends Controller
             });
         }
 
+        if (in_array($request->query('direction'), ['inbound', 'outbound'], true)) {
+            $query->where('direction', $request->query('direction'));
+        }
+
         if ($from = $request->date('from')) {
             $query->whereDate('created_at', '>=', $from);
         }
@@ -73,11 +79,22 @@ class CallController extends Controller
         ]);
     }
 
+    /**
+     * The full result of one call.
+     *
+     * Everything is read through the presenters, so no provider payload, attempt
+     * identifier or raw JSON reaches the view.
+     */
     public function show(CallAttempt $call): View
     {
-        $call->load(['customer', 'agent']);
+        $call->load(['customer', 'agent', 'callback']);
 
-        return view('calls.show', ['call' => $call]);
+        return view('calls.show', [
+            'call'       => $call,
+            'result'     => CallResultPresenter::for($call),
+            'transcript' => TranscriptPresenter::for($call),
+            'callback'   => $call->callback,
+        ]);
     }
 
     // =================================================================
@@ -160,7 +177,7 @@ class CallController extends Controller
                     'customer_id'     => $customer?->id ? (string) $customer->id : null,
                     'call_attempt_id' => (string) $attempt->id,
                 ]),
-                app: $agent?->platformApp(),
+                app: $agent?->providerApp(),
             );
         } catch (SarvamException $e) {
             // Full upstream detail goes to the server log, never to the browser.
@@ -179,11 +196,16 @@ class CallController extends Controller
 
             // Map the upstream status onto an honest local status instead of
             // labelling every failure a gateway error.
+            // clientMessage(), not userMessage(): the latter names the provider
+            // and, for 401/402/429, our credentials and our account balance.
+            // Internal staff still get the operator wording.
+            $internal = (bool) $request->user()?->is_internal_admin;
+
             return response()->json(array_filter([
                 'ok'      => false,
-                'message' => $e->userMessage(),
+                'message' => $internal ? $e->userMessage() : $e->clientMessage(),
                 // Only in debug builds does the operator see the raw upstream text.
-                'detail'  => config('app.debug') ? $e->upstreamDetail() : null,
+                'detail'  => config('app.debug') && $internal ? $e->upstreamDetail() : null,
             ], fn ($v) => $v !== null), $e->responseStatus());
         }
 

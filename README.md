@@ -315,3 +315,91 @@ app/Console/Commands/DispatchDueCalls.php
 config/sarvam.php                     credentials + all mappings
 routes/api.php                        the single public webhook route
 ```
+
+---
+
+## Multi-tenant client dashboard
+
+Each client business is one **workspace**. Every business record carries
+`workspace_id`, and reads are filtered by a global scope driven by the workspace
+resolved for the request, so a forgotten `where` cannot leak another client's
+data. Authorization policies are a second check for anything that reaches a model
+by another path.
+
+```
+Client user -> auth -> ResolveWorkspace -> Tenancy -> model scope -> their data only
+```
+
+Roles per workspace are `owner`, `admin`, `member` (`memberships` table). Our own
+team's accounts carry `users.is_internal_admin`, which is the only thing that
+opens the internal area; client users get a 404 there, not a 403.
+
+## Client onboarding runbook
+
+Read this first: **steps 1–3 happen in the voice platform's own dashboard, inside
+our single company account — not in this application.** This application is the
+client-facing product; it never creates or configures a voice agent, and the
+client never touches the platform at all.
+
+The voice platform publishes **no agent-authoring API** — its documented surface
+is deployments, instant outbound, campaigns, tests and analytics, and the agent
+builder is a dashboard activity with a manual Draft → Committed → Deployed flow.
+Steps 1–3 therefore cannot be automated, and nothing here pretends otherwise.
+
+| # | Where | Do this |
+|---|---|---|
+1 | **Provider dashboard** (our company account) | Build and fully configure the client's voice agent: prompt, voice, language, tools, knowledge |
+2 | **Provider dashboard** | Commit and publish a version of that agent; note its agent id and version |
+3 | **Provider dashboard** | Rent or import the phone number and set up its connection/deployment |
+4 | **This app** → Internal → Clients | Create the client workspace (business name, contact, sign-in email) |
+5 | **This app** → Internal → Clients → *client* | Under **Hosted agent mapping**, record the agent id, version and deployment id, and give the agent the name the client will see (e.g. *Maya*) |
+6 | **This app** → Internal → Clients → *client* | Add the number to the pool from the Clients page, then assign it to that agent |
+7 | **This app** → Internal → Clients → *client* | Add the client's login (the generated password is shown once — copy it then) |
+8 | **This app** | Make a test call and confirm the result arrives |
+9 | **This app** | Confirm the result appears **only** in that client's dashboard, then hand over access |
+
+The mapping is validated when saved. An agent with no usable mapping is marked
+*Needs attention* and refuses to place calls, rather than appearing ready to the
+client and failing silently.
+
+Numbers work the same way: the platform has no endpoint for listing the numbers
+our account owns, so our own `phone_numbers` table is the source of truth. Step 6
+allocates from it under a row lock, so one number can never be held by two
+clients.
+
+For shared master agents (not part of the client-facing product) there is also:
+
+```bash
+php artisan voice:template-bind --show
+php artisan voice:template-bind lead-qualification --agent-id=<id> --agent-version=1
+```
+
+## Production settings
+
+```dotenv
+APP_ENV=production
+APP_DEBUG=false
+SESSION_SECURE_COOKIE=true
+```
+
+Required processes:
+
+```bash
+php artisan queue:work --tries=3        # imports, campaign dispatch
+php artisan schedule:work               # or a cron entry for schedule:run
+php artisan config:cache route:cache view:cache
+```
+
+Never commit a real `.env`. The platform credentials
+(`SARVAM_API_KEY`, `SARVAM_ORG_ID`, `SARVAM_WORKSPACE_ID`) are read server-side
+only and are never rendered, logged or returned in a response.
+
+## Tests
+
+```bash
+php artisan test
+```
+
+Tenant isolation is covered by `tests/Feature/MultiTenancyTest.php`, the internal
+area and white-labelling by `InternalAdminTest.php`, and callback-to-workspace
+mapping and idempotency by `WebhookWorkspaceMappingTest.php`.

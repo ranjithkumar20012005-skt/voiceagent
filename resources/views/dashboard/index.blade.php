@@ -20,11 +20,33 @@
 </div>
 
 @unless ($configured)
+  {{-- No link to the platform configuration: that is ours, not the client's. --}}
   <div class="callout callout-warning mb-5">
     <i class="icon-circle-alert"></i>
-    <div>Calling is not available yet. An administrator needs to finish the server setup — see <a href="{{ route('providers.index') }}">Providers</a>.</div>
+    <div>Calling is not available yet. We are finishing the setup for your account and will let you know as soon as it is ready.</div>
   </div>
 @endunless
+
+{{-- ------------------------------------------------------- Agent status --}}
+@if ($agents->isNotEmpty())
+  <div class="card mb-section">
+    <div class="card-b">
+      <div class="row wrap" style="gap:18px; align-items:center">
+        @foreach ($agents as $agent)
+          <a href="{{ route('agents.show', $agent) }}" class="row" style="gap:8px; align-items:center; text-decoration:none">
+            <span class="badge {{ $agent->isActive() ? 'badge-success' : '' }}">
+              <span class="dot"></span>{{ $agent->displayStatus() }}
+            </span>
+            <strong>{{ $agent->name }}</strong>
+            <span class="text-xs muted">
+              {{ $agent->phoneNumber ? \App\Support\PhoneNumber::display($agent->phoneNumber->phone_number) : 'No number yet' }}
+            </span>
+          </a>
+        @endforeach
+      </div>
+    </div>
+  </div>
+@endif
 
 {{-- ------------------------------------------------------------ Today --}}
 <div class="section-label"><h2>Today</h2></div>
@@ -35,6 +57,31 @@
   <x-stat label="Follow-ups" :value="$kpis['follow_ups']" icon="icon-calendar-clock" tone="amber" key="follow_ups" />
   <x-stat label="Total Minutes" :value="$kpis['total_minutes']" icon="icon-clock" tone="ink" key="total_minutes"
           :hint="'Average call ' . ($kpis['avg_duration_human'] ?? 'unavailable')" />
+</div>
+
+{{-- ------------------------------------------------------- This month --}}
+<div class="section-label">
+  <h2>This month</h2>
+  <a href="{{ route('analytics.index') }}">Analytics →</a>
+</div>
+<div class="grid cols-5 mb-section">
+  <x-stat label="Calls This Month" :value="number_format($headline['calls_month'])" icon="icon-calendar" />
+  <x-stat label="Answered" :value="number_format($headline['answered'])" icon="icon-phone-incoming" tone="teal" />
+  <x-stat label="No Answer" :value="number_format($headline['no_answer'])" icon="icon-phone-missed" tone="amber" />
+  <x-stat label="Failed" :value="number_format($headline['failed'])" icon="icon-circle-alert" tone="red" />
+  <x-stat label="Avg Call Duration" :value="$headline['avg_duration_human'] ?: '—'" icon="icon-timer" tone="ink" />
+</div>
+<div class="grid cols-5 mb-section">
+  <x-stat label="Interested Leads" :value="number_format($headline['interested'])" icon="icon-user-check" value-tone="good" />
+  <x-stat label="Not Interested" :value="number_format($headline['not_interested'])" icon="icon-user-x" />
+  <x-stat label="Conversion Rate"
+          :value="$headline['conversion_rate'] !== null ? $headline['conversion_rate'] . '%' : '—'"
+          icon="icon-trending-up"
+          :hint="$headline['conversion_rate'] !== null ? 'Interested out of answered' : 'No answered calls yet'" />
+  <x-stat label="Callbacks Due" :value="number_format($headline['callbacks_due'])" icon="icon-calendar-clock"
+          tone="amber" :hint="$headline['callbacks_upcoming'] . ' upcoming'" />
+  <x-stat label="Minutes Used" :value="number_format($headline['usage_minutes_month'], 2)" icon="icon-gauge"
+          tone="ink" :hint="number_format($headline['usage_calls_month']) . ' billed calls'" />
 </div>
 
 {{-- --------------------------------------------------------- All time --}}
@@ -202,30 +249,45 @@
         <div>
           <h2>Upcoming callbacks</h2>
           <p>
-            {{ $customers['pending_callbacks'] }} scheduled
-            @if ($customers['overdue_callbacks'] > 0)
-              · <span class="text-bad">{{ $customers['overdue_callbacks'] }} overdue</span>
+            {{ number_format($headline['callbacks_upcoming']) }} scheduled
+            @if ($headline['callbacks_due'] > 0)
+              · <span class="text-bad">{{ number_format($headline['callbacks_due']) }} due now</span>
             @endif
           </p>
         </div>
-        <a href="{{ route('callbacks.index', $customers['overdue_callbacks'] > 0 ? ['range' => 'overdue'] : []) }}" class="btn btn-ghost btn-xs">All →</a>
+        <a href="{{ route('callbacks.index', $headline['callbacks_due'] > 0 ? ['range' => 'due'] : []) }}" class="btn btn-ghost btn-xs">All →</a>
       </div>
-      @forelse ($callbacks as $customer)
+      {{-- Reads the callbacks table, so this panel and the Callbacks page agree. --}}
+      @forelse ($callbacks as $callback)
         <div class="list-row">
           <div class="list-main">
-            <div class="list-title"><a href="{{ route('customers.show', $customer) }}" class="cell-main">{{ $customer->name ?: 'Unnamed' }}</a></div>
-            <div class="list-meta">{{ $customer->next_callback_at->format('d M, g:i A') }} · {{ $customer->next_callback_at->diffForHumans() }}</div>
+            <div class="list-title">
+              @if ($callback->call)
+                <a href="{{ route('calls.show', $callback->call) }}" class="cell-main">{{ $callback->customer?->name ?: 'Unnamed' }}</a>
+              @else
+                <span class="cell-main">{{ $callback->customer?->name ?: 'Unnamed' }}</span>
+              @endif
+            </div>
+            <div class="list-meta">
+              {{ $callback->scheduled_at->format('d M, g:i A') }} · {{ $callback->scheduled_at->diffForHumans() }}
+              @if ($callback->reason)
+                · {{ Str::limit($callback->reason, 40) }}
+              @endif
+            </div>
           </div>
-          <button type="button" class="btn btn-subtle btn-xs btn-icon" title="Call now" aria-label="Call {{ $customer->name }}"
-                  @disabled($customer->do_not_call)
-                  data-new-call data-customer-id="{{ $customer->id }}" data-name="{{ $customer->name }}"
-                  data-phone="{{ $customer->phone_number }}" data-policy="{{ $customer->policy_number }}"
-                  data-language="{{ $customer->preferred_language }}">
-            <i class="icon-phone"></i>
-          </button>
+          @if ($callback->customer)
+            <button type="button" class="btn btn-subtle btn-xs btn-icon" title="Call now"
+                    aria-label="Call {{ $callback->customer->name }}"
+                    @disabled($callback->customer->do_not_call)
+                    data-new-call data-customer-id="{{ $callback->customer->id }}" data-name="{{ $callback->customer->name }}"
+                    data-phone="{{ $callback->customer->phone_number }}" data-policy="{{ $callback->customer->policy_number }}"
+                    data-language="{{ $callback->customer->preferred_language }}">
+              <i class="icon-phone"></i>
+            </button>
+          @endif
         </div>
       @empty
-        <x-empty icon="icon-calendar-clock" title="Nothing scheduled" compact>
+        <x-empty icon="icon-calendar-clock" title="No callbacks currently scheduled" compact>
           Callbacks appear when a customer asks to be called later.
         </x-empty>
       @endforelse

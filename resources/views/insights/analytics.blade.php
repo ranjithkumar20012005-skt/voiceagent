@@ -28,19 +28,26 @@
   </div>
 @else
 
-<div class="grid cols-4 mb-4">
+{{-- Call outcome of the attempt itself: did it reach anyone. --}}
+<div class="grid cols-5 mb-4">
   <x-stat label="Total calls" :value="number_format($totals['total_calls'])" icon="icon-phone" :hint="$totals['in_flight'] ? $totals['in_flight'] . ' in progress' : null" />
-  <x-stat label="Connected" :value="number_format($totals['connected'])" icon="icon-phone-call" tone="teal" value-tone="good"
-          :hint="($totals['connect_rate'] ?? 0) . '% connect rate'" />
-  <x-stat label="Failed / not reached" :value="number_format($totals['failed'] + $totals['no_answer'] + $totals['busy'])" icon="icon-phone-missed" tone="red"
-          :hint="$totals['failed'] . ' failed · ' . $totals['no_answer'] . ' no answer · ' . $totals['busy'] . ' busy'" />
+  <x-stat label="Answered" :value="number_format($totals['connected'])" icon="icon-phone-call" tone="teal" value-tone="good"
+          :hint="($totals['connect_rate'] ?? 0) . '% answered'" />
+  <x-stat label="No answer" :value="number_format($totals['no_answer'] + $totals['busy'])" icon="icon-phone-missed" tone="amber"
+          :hint="$totals['busy'] ? $totals['busy'] . ' busy' : null" />
+  <x-stat label="Failed" :value="number_format($totals['failed'])" icon="icon-circle-alert" tone="red" />
   <x-stat label="Avg. duration" :value="$totals['avg_duration_human'] ?? '—'" icon="icon-timer" tone="ink" :hint="$totals['talk_time_human'] . ' total'" />
 </div>
-<div class="grid cols-4 mb-section">
-  <x-stat label="Leads" :value="number_format($totals['leads'])" icon="icon-user-check" value-tone="good"
-          :hint="$totals['lead_rate'] !== null ? $totals['lead_rate'] . '% of connected calls' : null" />
-  <x-stat label="Qualified leads" :value="number_format($totals['qualified'])" icon="icon-circle-check" hint="Flagged by the agent" />
-  <x-stat label="Callbacks requested" :value="number_format($totals['callbacks_requested'])" icon="icon-calendar-clock" tone="amber" />
+
+{{-- What the conversation produced. --}}
+<div class="grid cols-5 mb-section">
+  <x-stat label="Interested" :value="number_format($totals['leads'])" icon="icon-user-check" value-tone="good" />
+  <x-stat label="Not interested" :value="number_format($totals['not_interested'])" icon="icon-user-x" />
+  <x-stat label="Conversion rate" :value="$totals['lead_rate'] !== null ? $totals['lead_rate'] . '%' : '—'"
+          icon="icon-trending-up"
+          :hint="$totals['lead_rate'] !== null ? 'Interested out of answered' : 'No answered calls yet'" />
+  <x-stat label="Callbacks" :value="number_format($callbacks)" icon="icon-calendar-clock" tone="amber"
+          :hint="$totals['callbacks_requested'] . ' requested on calls'" />
   <x-stat label="Talk time" :value="number_format($totals['minutes'])" icon="icon-clock" tone="ink" hint="minutes, rounded up" />
 </div>
 
@@ -100,7 +107,7 @@
     <div class="card-h"><div><h2>By agent</h2><p>Calls in this period</p></div></div>
     <div class="table-wrap">
       <table class="table">
-        <thead><tr><th>Agent</th><th class="num">Calls</th><th class="num">Connected</th><th class="num">Leads</th><th class="num">Minutes</th></tr></thead>
+        <thead><tr><th>Agent</th><th class="num">Calls</th><th class="num">Answered</th><th class="num">Interested</th><th class="num">Minutes</th></tr></thead>
         <tbody>
           @foreach ($agents as $a)
             <tr>
@@ -116,6 +123,56 @@
     </div>
   </div>
 </div>
+
+{{-- ------------------------------------------- Answered vs not, by day --}}
+@if ($answerTrend->isNotEmpty())
+  <div class="card mb-section">
+    <div class="card-h"><div><h2>Answered vs not answered</h2><p>By day, in this period</p></div></div>
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th>Day</th><th class="num">Answered</th><th class="num">Not answered</th><th class="num">Answer rate</th></tr></thead>
+        <tbody>
+          @foreach ($answerTrend as $row)
+            @php $dayTotal = $row['answered'] + $row['unanswered']; @endphp
+            <tr>
+              <td>{{ $row['day'] }}</td>
+              <td class="num text-good">{{ number_format($row['answered']) }}</td>
+              <td class="num">{{ number_format($row['unanswered']) }}</td>
+              {{-- A day with no classified calls has no rate to show. --}}
+              <td class="num">{{ $dayTotal > 0 ? round($row['answered'] / $dayTotal * 100) . '%' : '—' }}</td>
+            </tr>
+          @endforeach
+        </tbody>
+      </table>
+    </div>
+  </div>
+@endif
+
+{{-- ------------------------------------------------------- By language --}}
+{{--
+    Shown only when calls have actually recorded a language. With none, the
+    section is omitted rather than rendering a table of unknowns.
+--}}
+@if ($byLanguage->isNotEmpty())
+  <div class="card">
+    <div class="card-h"><div><h2>By language</h2><p>Where the conversation language was recorded</p></div></div>
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th>Language</th><th class="num">Calls</th><th class="num">Answered</th><th class="num">Interested</th></tr></thead>
+        <tbody>
+          @foreach ($byLanguage as $row)
+            <tr>
+              <td class="cell-main">{{ $row['language'] }}</td>
+              <td class="num">{{ number_format($row['calls']) }}</td>
+              <td class="num">{{ number_format($row['answered']) }}</td>
+              <td class="num text-good">{{ number_format($row['interested']) }}</td>
+            </tr>
+          @endforeach
+        </tbody>
+      </table>
+    </div>
+  </div>
+@endif
 @endif
 
 @endsection

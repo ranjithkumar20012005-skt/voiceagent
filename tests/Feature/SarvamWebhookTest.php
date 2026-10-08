@@ -4,7 +4,9 @@ namespace Tests\Feature;
 
 use App\Models\CallAttempt;
 use App\Models\Customer;
+use App\Models\Workspace;
 use App\Support\CallStatus;
+use App\Support\Tenancy;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -13,6 +15,23 @@ class SarvamWebhookTest extends TestCase
     use RefreshDatabase;
 
     private const TOKEN = 'test-webhook-token-0123456789';
+
+    /**
+     * Pin the tenant for the fixtures below.
+     *
+     * Customers belong to a workspace now, so a fixture created with none would
+     * sit outside every scope -- including the one the webhook resolves to. These
+     * tests use the default workspace, which is also where a callback carrying no
+     * agent mapping lands, so payload and fixture agree.
+     */
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        app(Tenancy::class)->set(
+            Workspace::where('slug', 'default')->first() ?? $this->makeWorkspace('Default Workspace'),
+        );
+    }
 
     private function url(?string $token = null): string
     {

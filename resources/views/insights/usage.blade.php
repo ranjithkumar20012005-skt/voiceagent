@@ -1,14 +1,13 @@
+{{--
+    Usage.
+
+    Built from usage_records -- one row per call, written when the result lands.
+    Only what the client is charged appears here; our wholesale cost is hidden on
+    the model and never selected.
+--}}
 @extends('layouts.app')
 
 @section('title', 'Usage')
-
-@php
-  $delta = function (int $now, int $before) {
-      if ($before === 0) return $now > 0 ? 'New this month' : 'No activity last month';
-      $pct = round(($now - $before) / $before * 100);
-      return ($pct >= 0 ? '+' : '') . $pct . '% vs last month';
-  };
-@endphp
 
 @section('content')
 
@@ -16,64 +15,105 @@
   <div class="ph-main">
     <div class="eyebrow">Settings</div>
     <h1>Usage</h1>
-    <p class="ph-sub">Calls and conversation minutes for {{ $month }}, counted from recorded calls. Billing rates are agreed with your provider and are not stored here.</p>
+    <p class="ph-sub">Calls and conversation minutes for {{ $month }}.</p>
   </div>
 </div>
 
+@php
+  $deltaCalls = $previous['calls'] > 0
+      ? round(($current['calls'] - $previous['calls']) / $previous['calls'] * 100)
+      : null;
+@endphp
+
 <div class="grid cols-4 mb-section">
-  <x-stat label="Calls this month" :value="number_format($current['total_calls'])" icon="icon-phone" :hint="$delta($current['total_calls'], $previous['total_calls'])" />
-  <x-stat label="Conversation minutes" :value="number_format($current['minutes'])" icon="icon-clock" tone="teal" :hint="$delta($current['minutes'], $previous['minutes'])" />
-  <x-stat label="Connected calls" :value="number_format($current['connected'])" icon="icon-phone-call" tone="ink" :hint="($current['connect_rate'] ?? 0) . '% connect rate'" />
-  <x-stat label="All-time minutes" :value="number_format($allTime['minutes'])" icon="icon-history" tone="ink" :hint="number_format($allTime['total_calls']) . ' calls in total'" />
+  <x-stat label="Calls this month" :value="number_format($current['calls'])" icon="icon-phone-call"
+          :hint="$deltaCalls !== null ? ($deltaCalls >= 0 ? '+' : '') . $deltaCalls . '% vs last month' : null" />
+  <x-stat label="Minutes this month" :value="number_format($current['minutes'], 2)" icon="icon-clock" />
+  <x-stat label="Conversation minutes" :value="number_format($current['seconds'] / 60, 1)" icon="icon-timer"
+          hint="Actual talk time" />
+  <x-stat label="Calls all time" :value="number_format($allTime['calls'])" icon="icon-chart-column" />
 </div>
 
-<div class="split-even">
+@if ($current['calls'] === 0)
+
   <div class="card">
-    <div class="card-h"><div><h2>Daily calls</h2><p>{{ $month }} to date</p></div></div>
     <div class="card-b">
-      @if ($series['has_data'])
-        <div class="chart-box"><canvas id="usageChart" role="img" aria-label="Calls per day this month"></canvas></div>
-      @else
-        <x-empty icon="icon-chart-column" title="No calls this month" compact>Usage appears here as calls are placed.</x-empty>
-      @endif
+      <x-empty icon="icon-gauge" title="No usage yet this month">
+        Your call activity will appear here after your agent begins calling.
+      </x-empty>
     </div>
   </div>
 
-  <div class="card">
-    <div class="card-h"><div><h2>By agent</h2><p>{{ $month }}</p></div></div>
-    @if ($agents->isEmpty())
-      <x-empty icon="icon-bot" title="No usage yet" compact />
-    @else
-      <div class="table-wrap">
-        <table class="table">
-          <thead><tr><th>Agent</th><th class="num">Calls</th><th class="num">Minutes</th></tr></thead>
-          <tbody>
-            @foreach ($agents as $a)
-              <tr><td class="cell-main">{{ $a['name'] }}</td><td class="num">{{ number_format($a['total']) }}</td><td class="num">{{ number_format($a['minutes']) }}</td></tr>
-            @endforeach
-          </tbody>
-        </table>
+@else
+
+  <div class="grid cols-2">
+
+    <div class="card">
+      <div class="card-h"><div><h2>Daily usage</h2><p>{{ $month }}</p></div></div>
+      <div class="card-b p-0">
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>Day</th><th class="num">Calls</th><th class="num">Minutes</th></tr></thead>
+            <tbody>
+              @foreach ($daily as $row)
+                <tr>
+                  <td>{{ $row['day'] }}</td>
+                  <td class="num">{{ number_format($row['calls']) }}</td>
+                  <td class="num">{{ number_format($row['minutes'], 2) }}</td>
+                </tr>
+              @endforeach
+            </tbody>
+            <tfoot>
+              <tr>
+                <th>Total</th>
+                <th class="num">{{ number_format($current['calls']) }}</th>
+                <th class="num">{{ number_format($current['minutes'], 2) }}</th>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
       </div>
-    @endif
-    <div class="card-f"><span class="text-xs muted">Minutes are summed per call from the duration the platform reports, rounded up.</span></div>
+    </div>
+
+    <div class="card">
+      <div class="card-h"><div><h2>Month on month</h2></div></div>
+      <div class="card-b">
+        <dl class="kv">
+          <dt>{{ $month }} calls</dt><dd>{{ number_format($current['calls']) }}</dd>
+          <dt>{{ $month }} minutes</dt><dd>{{ number_format($current['minutes'], 2) }}</dd>
+          <dt>Previous month calls</dt><dd>{{ number_format($previous['calls']) }}</dd>
+          <dt>Previous month minutes</dt><dd>{{ number_format($previous['minutes'], 2) }}</dd>
+          <dt>All time calls</dt><dd>{{ number_format($allTime['calls']) }}</dd>
+          <dt>All time minutes</dt><dd>{{ number_format($allTime['minutes'], 2) }}</dd>
+        </dl>
+        <p class="text-xs muted mt-3">Minutes are billed per started minute of connected conversation.</p>
+      </div>
+    </div>
+
   </div>
-</div>
+
+  @if ($perAgent->count() > 1)
+    <div class="card mt-4">
+      <div class="card-h"><div><h2>By agent</h2><p>{{ $month }}</p></div></div>
+      <div class="card-b p-0">
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>Agent</th><th class="num">Calls</th><th class="num">Minutes</th></tr></thead>
+            <tbody>
+              @foreach ($perAgent as $row)
+                <tr>
+                  <td class="cell-main">{{ $row['agent'] }}</td>
+                  <td class="num">{{ number_format($row['calls']) }}</td>
+                  <td class="num">{{ number_format($row['minutes'], 2) }}</td>
+                </tr>
+              @endforeach
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  @endif
+
+@endif
 
 @endsection
-
-@push('scripts')
-@if ($series['has_data'])
-<script src="{{ asset('assets/js/vendor/chart.umd.min.js') }}"></script>
-<script>
-(function () {
-  AppCharts.defaults();
-  var s = @json($series);
-  new Chart(document.getElementById('usageChart'), {
-    type: 'line',
-    data: { labels: s.labels, datasets: [{ label: 'Calls', data: s.total, borderColor: '#00A89D', backgroundColor: 'rgba(0,168,157,.08)', fill: true, tension: .3, pointRadius: 2 }] },
-    options: { scales: { x: { grid: { display: false }, ticks: { maxTicksLimit: 10, maxRotation: 0 } }, y: { beginAtZero: true, ticks: { precision: 0 } } } },
-  });
-})();
-</script>
-@endif
-@endpush

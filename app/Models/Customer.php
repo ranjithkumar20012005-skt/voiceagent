@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToWorkspace;
 use App\Support\PhoneNumber;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -10,14 +11,18 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Customer extends Model
 {
+    use BelongsToWorkspace;
     use HasFactory;
 
     protected $fillable = [
+        'workspace_id',
         'customer_identifier', 'name', 'phone_number', 'policy_number',
         'registered_mobile', 'policy_expiry_date', 'renewal_premium',
         'preferred_language', 'customer_status', 'last_outcome', 'last_connectivity',
         'last_call_at', 'next_callback_at', 'call_count', 'do_not_call', 'notes',
         'import_batch_id',
+        // Generic fields, for verticals other than insurance renewals.
+        'email', 'company', 'location', 'source', 'tags', 'custom_fields',
     ];
 
     protected function casts(): array
@@ -29,6 +34,10 @@ class Customer extends Model
             'next_callback_at'   => 'datetime',
             'do_not_call'        => 'boolean',
             'call_count'         => 'integer',
+            // Without these the JSON columns added for generic verticals cannot
+            // be assigned an array at all.
+            'tags'               => 'array',
+            'custom_fields'      => 'array',
         ];
     }
 

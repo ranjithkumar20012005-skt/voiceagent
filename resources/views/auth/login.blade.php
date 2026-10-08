@@ -79,7 +79,7 @@
         <button type="submit" class="btn btn-primary btn-lg btn-block" id="signInBtn">Sign In &rarr;</button>
       </form>
 
-      <p class="auth-help">No account yet? <a href="{{ route('home') }}#pricing">Talk to us about access</a>.</p>
+      <p class="auth-help">No account yet? <a href="{{ route('register') }}">Create one</a>.</p>
     </div>
   </main>
 

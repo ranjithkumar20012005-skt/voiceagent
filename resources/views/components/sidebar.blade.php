@@ -9,9 +9,14 @@
         'Overview' => [
             ['route' => 'dashboard', 'match' => 'dashboard', 'icon' => 'icon-layout-dashboard', 'label' => 'Dashboard'],
         ],
+        // A client builds and runs their own agent here.
         'Agents' => [
-            ['route' => 'agents.index',  'match' => ['agents.index', 'agents.edit'], 'icon' => 'icon-bot', 'label' => 'My Agents'],
-            ['route' => 'agents.create', 'match' => 'agents.create', 'icon' => 'icon-plus', 'label' => 'Create Agent'],
+            ['route' => 'agents.index', 'match' => ['agents.index', 'agents.show'], 'icon' => 'icon-bot', 'label' => 'My Agents'],
+            ['route' => 'agents.create', 'match' => [
+                'agents.create', 'agents.store', 'agents.edit', 'agents.update', 'agents.preview',
+                'agents.provision', 'agents.setup', 'agents.setup.update', 'agents.sources.*',
+                'agents.campaign.start', 'agents.schedule.*', 'agents.start', 'agents.pause',
+            ], 'icon' => 'icon-plus', 'label' => 'Create Agent'],
         ],
         'Calling' => [
             ['route' => 'calling.index',   'match' => 'calling.*',   'icon' => 'icon-phone-outgoing', 'label' => 'New Call'],
@@ -20,7 +25,8 @@
             ['route' => 'imports.index',   'match' => 'imports.*',   'icon' => 'icon-upload',         'label' => 'Imports'],
         ],
         'Results' => [
-            ['route' => 'leads.index',     'match' => 'leads.*',     'icon' => 'icon-user-check',     'label' => 'Leads'],
+            ['route' => 'leads.index',     'match' => 'leads.*',     'icon' => 'icon-user-check',     'label' => 'Leads & Results'],
+            ['route' => 'conversations.index', 'match' => 'conversations.*', 'icon' => 'icon-message-square', 'label' => 'Conversations'],
             ['route' => 'calls.index',     'match' => 'calls.*',     'icon' => 'icon-phone-call',     'label' => 'Call Logs'],
             ['route' => 'callbacks.index', 'match' => 'callbacks.*', 'icon' => 'icon-calendar-clock', 'label' => 'Callbacks',
              'count' => $pendingCallbacks + $overdueCallbacks, 'alert' => $overdueCallbacks > 0],
@@ -32,9 +38,10 @@
             ['route' => 'knowledge.index', 'match' => 'knowledge.*', 'icon' => 'icon-book-open', 'label' => 'Knowledge Base', 'soon' => 'Off'],
             ['route' => 'tools.index',     'match' => 'tools.*',     'icon' => 'icon-wrench',    'label' => 'Tools',          'soon' => 'Off'],
         ],
+        // "Providers" is gone from the client's navigation: it exposed the voice
+        // platform's configuration state, which is ours and not theirs to see.
         'Deploy' => [
-            ['route' => 'phone-numbers.index', 'match' => 'phone-numbers.*', 'icon' => 'icon-hash',  'label' => 'Phone Numbers'],
-            ['route' => 'providers.index',     'match' => 'providers.*',     'icon' => 'icon-boxes', 'label' => 'Providers'],
+            ['route' => 'phone-numbers.index', 'match' => 'phone-numbers.*', 'icon' => 'icon-hash', 'label' => 'Phone Numbers'],
         ],
         'Insights' => [
             ['route' => 'analytics.index', 'match' => 'analytics.*', 'icon' => 'icon-chart-column', 'label' => 'Analytics'],
@@ -44,6 +51,16 @@
             ['route' => 'settings.index', 'match' => 'settings.*', 'icon' => 'icon-settings', 'label' => 'Settings'],
         ],
     ];
+
+    // Our own team only. Client users never have this flag, so the group is not
+    // rendered for them at all -- and the routes 404 regardless.
+    if (auth()->user()?->is_internal_admin) {
+        $groups['Internal'] = [
+            ['route' => 'internal.clients.index', 'match' => 'internal.clients.*', 'icon' => 'icon-boxes', 'label' => 'Clients'],
+            ['route' => 'internal.agent-requests.index', 'match' => 'internal.agent-requests.*', 'icon' => 'icon-inbox', 'label' => 'Agent Requests',
+             'count' => $pendingAgentRequests, 'alert' => $pendingAgentRequests > 0],
+        ];
+    }
 @endphp
 
 <aside class="shell-sidebar" id="appSidebar" aria-label="Main navigation">

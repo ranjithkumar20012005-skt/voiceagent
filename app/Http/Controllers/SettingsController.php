@@ -2,7 +2,8 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\AppSetting;
+use App\Models\Agent;
+use App\Models\WorkspaceSetting;
 use App\Services\SarvamVoiceService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -23,15 +24,20 @@ class SettingsController extends Controller
         return view('settings.index', [
             'status'   => $this->sarvam->publicStatus(),
             'missing'  => $this->sarvam->missingConfigKeys(),
+            // Per-workspace now: these were global, so one client changing a
+            // calling default changed it for every other client too.
             'settings' => [
-                'default_language'    => AppSetting::get('default_language', config('sarvam.default_language')),
-                'retry_limit'         => AppSetting::get('retry_limit', config('sarvam.campaign.retry.max_retries')),
-                'automation_time'     => AppSetting::get('automation_time', '08:00'),
-                'max_calls_per_run'   => AppSetting::get('max_calls_per_run', config('sarvam.campaign.max_calls_per_run')),
-                'window_start'        => AppSetting::get('window_start', config('sarvam.campaign.window.start')),
-                'window_end'          => AppSetting::get('window_end', config('sarvam.campaign.window.end')),
+                'default_language'    => WorkspaceSetting::get('default_language', config('sarvam.default_language')),
+                'retry_limit'         => WorkspaceSetting::get('retry_limit', config('sarvam.campaign.retry.max_retries')),
+                'automation_time'     => WorkspaceSetting::get('automation_time', '08:00'),
+                'max_calls_per_run'   => WorkspaceSetting::get('max_calls_per_run', config('sarvam.campaign.max_calls_per_run')),
+                'window_start'        => WorkspaceSetting::get('window_start', config('sarvam.campaign.window.start')),
+                'window_end'          => WorkspaceSetting::get('window_end', config('sarvam.campaign.window.end')),
             ],
             'languages' => config('sarvam.languages', []),
+            // The client's own agent, in place of the platform identifiers that
+            // used to be rendered here.
+            'primaryAgent' => Agent::with('phoneNumber')->orderByDesc('is_default')->orderBy('name')->first(),
         ]);
     }
 
@@ -46,7 +52,7 @@ class SettingsController extends Controller
             'window_end'        => ['required', 'date_format:H:i', 'after:window_start'],
         ]);
 
-        AppSetting::putMany($data);
+        WorkspaceSetting::putMany($data);
 
         return back()->with('status', 'Settings saved.');
     }

@@ -2,12 +2,14 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToWorkspace;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ImportBatch extends Model
 {
+    use BelongsToWorkspace;
     use HasFactory;
 
     public const PENDING_MAPPING = 'pending_mapping';
@@ -17,6 +19,7 @@ class ImportBatch extends Model
     public const FAILED          = 'failed';
 
     protected $fillable = [
+        'workspace_id',
         'original_filename', 'stored_path', 'file_type', 'file_size', 'status',
         'column_map', 'detected_headers', 'total_rows', 'valid_rows',
         'rejected_rows', 'duplicate_rows', 'rejection_samples', 'error_message',

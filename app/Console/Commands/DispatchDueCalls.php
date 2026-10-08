@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Jobs\DispatchCampaignJob;
 use App\Models\Automation;
+use App\Support\Tenancy;
 use App\Models\Campaign;
 use App\Services\SarvamVoiceService;
 use Illuminate\Console\Command;
@@ -34,10 +35,17 @@ class DispatchDueCalls extends Command
             return self::FAILURE;
         }
 
-        $query = Automation::query()->where('enabled', true);
+        // Unscoped: the scheduler runs for every client, so it must see across
+        // workspaces. Each automation is then executed as its own tenant below,
+        // which is what keeps one client's run inside their own data.
+        $query = Automation::withoutGlobalScope('workspace')
+            ->with(['agent.workspace', 'workspace'])
+            ->where('enabled', true);
 
         if ($id = $this->option('automation')) {
-            $query = Automation::query()->whereKey($id);
+            $query = Automation::withoutGlobalScope('workspace')
+                ->with(['agent.workspace', 'workspace'])
+                ->whereKey($id);
         }
 
         $automations = $query->get();
@@ -48,8 +56,24 @@ class DispatchDueCalls extends Command
             return self::SUCCESS;
         }
 
+        $tenancy = app(Tenancy::class);
+
         foreach ($automations as $automation) {
-            $this->runAutomation($automation, $dryRun);
+            $workspace = $automation->workspace ?? $automation->agent?->workspace;
+
+            if (! $workspace) {
+                $this->warn("Automation #{$automation->id} has no workspace. Skipped.");
+
+                continue;
+            }
+
+            // Due-ness is checked here rather than inside the run so --force and
+            // --automation keep working as manual overrides.
+            if (! $this->option('force') && ! $this->option('automation') && ! $automation->isDue()) {
+                continue;
+            }
+
+            $tenancy->actingAs($workspace, fn () => $this->runAutomation($automation, $dryRun));
         }
 
         return self::SUCCESS;
@@ -96,9 +120,10 @@ class DispatchDueCalls extends Command
 
         $campaign = Campaign::create([
             'name'                => sprintf('%s %s', $automation->name, now($automation->timezone)->format('d M Y')),
-            'description'         => 'Created automatically by the ' . $automation->name . ' automation.',
+            'description'         => 'Created automatically by the ' . $automation->name . ' schedule.',
             'status'              => 'draft',
             'automation_id'       => $automation->id,
+            'import_batch_id'     => $automation->import_batch_id,
             'total_contacts'      => $customers->count(),
             'attempts_per_second' => $automation->attempts_per_second,
             'starts_at'           => now(),

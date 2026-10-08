@@ -26,7 +26,7 @@
 <div class="ph">
   <div class="ph-main">
     <div class="eyebrow">Results</div>
-    <h1>Leads</h1>
+    <h1>Leads &amp; Results</h1>
     <p class="ph-sub">Customers worth following up, straight from the agent's own call outcomes.</p>
   </div>
 </div>
@@ -35,25 +35,68 @@
   <div class="card-b">
     <div class="filter-bar">
       <div class="tabs-pill" role="tablist">
-        @foreach (['hot' => 'Hot Leads', 'qualified' => 'Qualified', 'follow_up' => 'Follow-ups'] as $key => $label)
+        @foreach (['hot' => 'Hot Leads', 'qualified' => 'Qualified', 'follow_up' => 'Follow-ups', 'all' => 'All Results'] as $key => $label)
           <a href="{{ route('leads.index', array_merge(request()->except('page', 'filter'), ['filter' => $key])) }}"
              class="{{ $filter === $key ? 'active' : '' }}" role="tab" aria-selected="{{ $filter === $key ? 'true' : 'false' }}">
-            {{ $label }} <span class="tab-count">{{ $counts[$key] }}</span>
+            {{ $label }} <span class="tab-count">{{ number_format($counts[$key]) }}</span>
           </a>
         @endforeach
       </div>
-
-      <form method="GET" action="{{ route('leads.index') }}" class="row ml-auto" style="flex:1 1 280px; max-width:420px">
-        <input type="hidden" name="filter" value="{{ $filter }}">
-        <div class="search" style="flex:1">
-          <i class="icon-search"></i>
-          <input type="search" name="q" value="{{ $search }}" class="input input-sm" placeholder="Search name, phone or policy" aria-label="Search leads">
-        </div>
-        @if ($search)
-          <a href="{{ route('leads.index', ['filter' => $filter]) }}" class="btn btn-ghost btn-sm">Clear</a>
-        @endif
-      </form>
     </div>
+
+    {{-- Date range, agent, call status and outcome. The tab is carried through so
+         filtering does not silently drop the client back to Hot Leads. --}}
+    <form method="GET" action="{{ route('leads.index') }}" class="row wrap mt-3" style="gap:10px; align-items:flex-end">
+      <input type="hidden" name="filter" value="{{ $filter }}">
+
+      <div class="field" style="margin:0; min-width:200px; flex:1">
+        <label class="label" for="q">Customer or phone</label>
+        <input type="search" class="input" id="q" name="q" value="{{ $filters['q'] }}" placeholder="Name, phone or policy">
+      </div>
+
+      <div class="field" style="margin:0">
+        <label class="label" for="agent">Agent</label>
+        <select class="input" id="agent" name="agent">
+          <option value="">All</option>
+          @foreach ($agents as $agent)
+            <option value="{{ $agent->id }}" @selected((string) $filters['agent'] === (string) $agent->id)>{{ $agent->name }}</option>
+          @endforeach
+        </select>
+      </div>
+
+      <div class="field" style="margin:0">
+        <label class="label" for="status">Call status</label>
+        <select class="input" id="status" name="status">
+          <option value="">All</option>
+          @foreach ($statuses as $value => $label)
+            <option value="{{ $value }}" @selected((string) $filters['status'] === (string) $value)>{{ $label }}</option>
+          @endforeach
+        </select>
+      </div>
+
+      <div class="field" style="margin:0">
+        <label class="label" for="outcome">Outcome</label>
+        <select class="input" id="outcome" name="outcome">
+          <option value="">All</option>
+          @foreach ($outcomes as $value => $label)
+            <option value="{{ $value }}" @selected((string) $filters['outcome'] === (string) $value)>{{ $label }}</option>
+          @endforeach
+        </select>
+      </div>
+
+      <div class="field" style="margin:0">
+        <label class="label" for="from">From</label>
+        <input type="date" class="input" id="from" name="from" value="{{ $filters['from'] }}">
+      </div>
+
+      <div class="field" style="margin:0">
+        <label class="label" for="to">To</label>
+        <input type="date" class="input" id="to" name="to" value="{{ $filters['to'] }}">
+      </div>
+
+      <button type="submit" class="btn btn-secondary btn-sm">Filter</button>
+      <a href="{{ route('leads.index', ['filter' => $filter]) }}" class="btn btn-ghost btn-sm">Clear</a>
+    </form>
   </div>
 </div>
 
@@ -74,17 +117,22 @@
         <thead>
           <tr>
             <th>Customer</th>
+            <th>Agent</th>
+            <th>Date / time</th>
+            <th>Duration</th>
+            <th>Call status</th>
             <th>Outcome</th>
-            <th>Qualification</th>
-            <th>Last call</th>
-            <th>Next action</th>
+            <th>Lead status</th>
             <th>Callback</th>
             <th class="end"></th>
           </tr>
         </thead>
         <tbody>
           @foreach ($leads as $lead)
-            @php [$action, $actionTone] = $nextAction($lead); @endphp
+            @php
+              $r = \App\Services\Presenters\CallResultPresenter::for($lead);
+              [$action, $actionTone] = $nextAction($lead);
+            @endphp
             <tr>
               <td>
                 @if ($lead->customer)
@@ -92,24 +140,28 @@
                 @else
                   <span class="cell-main">Unknown</span>
                 @endif
-                <span class="cell-sub">{{ $lead->display_phone }}</span>
+                <span class="cell-sub mono">{{ $r->phone() }}</span>
               </td>
-              <td><span class="badge {{ LeadOutcome::badge($lead->call_disposition) }}">{{ LeadOutcome::hotHeadline($lead) }}</span></td>
-              <td>
-                @if ($lead->lead_generated)
-                  <span class="badge badge-success"><i class="icon-circle-check"></i> Qualified</span>
-                @else
-                  <span class="muted text-sm">Not flagged</span>
-                @endif
-              </td>
+              <td>{{ $r->agentName() }}</td>
               <td class="nowrap">
                 {{ $lead->created_at->format('d M Y') }}
-                <span class="cell-sub">{{ $lead->created_at->format('g:i A') }} · {{ $lead->duration_for_humans }}</span>
+                <span class="cell-sub">{{ $lead->created_at->format('g:i A') }}</span>
               </td>
-              <td><span class="badge {{ $actionTone }}">{{ $action }}</span></td>
+              <td>{{ $r->duration() ?: '—' }}</td>
+              <td><span class="badge">{{ $r->callStatusLabel() }}</span></td>
+              <td><span class="badge {{ LeadOutcome::badge($lead->call_disposition) }}">{{ LeadOutcome::hotHeadline($lead) }}</span></td>
+              <td>
+                <span class="badge {{ $r->isInterested() ? 'badge-success' : '' }}">{{ $r->leadStatusLabel() }}</span>
+                {{-- Next action, derived from the agent's structured output only. --}}
+                <span class="cell-sub">{{ $action }}</span>
+              </td>
               <td class="nowrap">
-                @if ($lead->customer?->next_callback_at)
-                  <span class="{{ $lead->customer->next_callback_at->isPast() ? 'text-bad' : '' }}">{{ $lead->customer->next_callback_at->format('d M, g:i A') }}</span>
+                {{-- The callbacks table, so this agrees with the Callbacks page. --}}
+                @if ($lead->callback)
+                  <span class="{{ $lead->callback->scheduled_at->isPast() ? 'text-bad' : '' }}">
+                    {{ $lead->callback->scheduled_at->format('d M, g:i A') }}
+                  </span>
+                  <span class="cell-sub">{{ ucfirst($lead->callback->status) }}</span>
                 @else
                   <span class="faint">—</span>
                 @endif

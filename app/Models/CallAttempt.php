@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToWorkspace;
 use App\Support\CallStatus;
 use App\Support\PhoneNumber;
 use Illuminate\Database\Eloquent\Builder;
@@ -11,16 +12,18 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class CallAttempt extends Model
 {
+    use BelongsToWorkspace;
     use HasFactory;
 
     protected $fillable = [
+        'workspace_id',
         'customer_id', 'agent_id', 'attempt_id', 'campaign_id', 'cohort_id', 'interaction_id',
         'direction', 'status', 'completion_status', 'connectivity_status',
         'call_disposition', 'lead_generated', 'callback_required', 'callback_at',
         'failure_reason', 'duration_seconds', 'retry_attempt',
         'agent_phone_number', 'customer_phone_number', 'started_at', 'ended_at',
         'initial_agent_variables', 'final_agent_variables', 'output_agent_variables',
-        'transcript', 'raw_webhook_payload', 'user_id', 'webhook_received_at',
+        'transcript', 'summary', 'language', 'raw_webhook_payload', 'user_id', 'webhook_received_at',
     ];
 
     protected function casts(): array
@@ -50,6 +53,17 @@ class CallAttempt extends Model
     public function agent(): BelongsTo
     {
         return $this->belongsTo(Agent::class);
+    }
+
+    /** At most one callback per call -- a unique index enforces it. */
+    public function callback(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(Callback::class, 'call_id');
+    }
+
+    public function usageRecord(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(UsageRecord::class, 'call_id');
     }
 
     // ---------------------------------------------------------------
